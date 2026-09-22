@@ -1,5 +1,6 @@
-// Command mcpaint-cli is a development harness for driving Mario Paint directly,
-// without going through the MCP server.
+// Command mcpaint-cli drives Mario Paint directly, without going through the MCP
+// server. It draws a picture or a list of operations onto the canvas and
+// captures a screenshot, a recording, or both.
 package main
 
 import (
@@ -19,137 +20,260 @@ import (
 	"github.com/TheLiux/MCPaint/internal/session"
 )
 
+type config struct {
+	core, rom            string
+	image, opsFile       string
+	out, video, wav      string
+	fit, rules, music    string
+	dither, vivid, full  bool
+	strokes              bool
+	titleSeconds, target float64
+	fps                  float64
+	scale                int
+}
+
 func main() {
-	var (
-		core   = flag.String("core", os.Getenv("MCPAINT_CORE"), "libretro core")
-		rom    = flag.String("rom", os.Getenv("MCPAINT_ROM"), "Mario Paint ROM")
-		in     = flag.String("image", "", "image to draw on the canvas")
-		out    = flag.String("out", "out/canvas.png", "screenshot destination")
-		fit    = flag.String("fit", "contain", "contain | cover | stretch")
-		dither = flag.Bool("dither", true, "Floyd-Steinberg dithering")
-		vivid  = flag.Bool("vivid", false, "match hue ahead of lightness; suits flat artwork")
-		rules  = flag.String("map", "", "pin source colours to palette entries, e.g. \"#4285F4=blue,#F4B400=yellow\"")
-		full   = flag.Bool("full", false, "capture the whole screen, not just the canvas")
-		ops    = flag.String("ops", "", "JSON file of drawing operations")
-		video  = flag.String("video", "", "record the drawing to this MP4")
-		secs   = flag.Float64("seconds", 8, "target video length")
-		fps    = flag.Float64("fps", 0, "video frame rate; 0 uses the console's own, which keeps audio in sync")
-		scale  = flag.Int("scale", 3, "video upscale factor")
-		music  = flag.String("music", "theme-1", "canvas track: theme-1, theme-2, your-song or off")
-	)
+	var c config
+	flag.StringVar(&c.core, "core", os.Getenv("MCPAINT_CORE"), "libretro core")
+	flag.StringVar(&c.rom, "rom", os.Getenv("MCPAINT_ROM"), "Mario Paint ROM")
+	flag.StringVar(&c.image, "image", "", "image to redraw on the canvas")
+	flag.StringVar(&c.opsFile, "ops", "", "JSON file of drawing operations")
+	flag.StringVar(&c.out, "out", "out/canvas.png", "screenshot destination")
+	flag.StringVar(&c.video, "video", "", "record to this MP4")
+	flag.StringVar(&c.wav, "wav", "", "also write the recorded music on its own")
+	flag.StringVar(&c.fit, "fit", "contain", "contain | cover | stretch")
+	flag.StringVar(&c.rules, "map", "", `pin source colours, e.g. "#4285F4=blue,#F4B400=yellow"`)
+	flag.StringVar(&c.music, "music", "theme-1", "canvas track: theme-1, theme-2, your-song or off")
+	flag.BoolVar(&c.dither, "dither", true, "Floyd-Steinberg dithering")
+	flag.BoolVar(&c.vivid, "vivid", false, "match hue ahead of lightness; suits flat artwork")
+	flag.BoolVar(&c.full, "full", false, "capture the whole screen, not just the canvas")
+	flag.BoolVar(&c.strokes, "strokes", false, "replay an imported image as strokes instead of pasting it")
+	flag.Float64Var(&c.titleSeconds, "title", 0, "seconds of title screen to record before the drawing")
+	flag.Float64Var(&c.target, "seconds", 8, "target length of the drawing")
+	flag.Float64Var(&c.fps, "fps", 0, "video frame rate; 0 uses the console's own, which keeps audio in sync")
+	flag.IntVar(&c.scale, "scale", 3, "video upscale factor")
 	flag.Parse()
 
-	var drawAudio []int16
-
-	start := time.Now()
-	s, err := session.Open(session.Config{CorePath: *core, ROMPath: *rom})
-	if err != nil {
+	if err := run(c); err != nil {
 		log.Fatal(err)
+	}
+}
+
+func run(c config) error {
+	start := time.Now()
+
+	s, err := session.Open(session.Config{CorePath: c.core, ROMPath: c.rom})
+	if err != nil {
+		return err
 	}
 	defer s.Close()
 
-	if *fps <= 0 {
-		*fps = s.FPS()
+	if c.fps <= 0 {
+		c.fps = s.FPS()
 	}
-
-	track, err := session.ParseBGM(*music)
+	track, err := session.ParseBGM(c.music)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
+
+	tmp, err := os.MkdirTemp("", "mcpaint-cli-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmp)
+
+	var parts []capture.Part
+
+	// The machine starting up, when asked for.
+	if c.video != "" && c.titleSeconds > 0 {
+		part, err := recordTitle(s, c, tmp)
+		if err != nil {
+			return err
+		}
+		parts = append(parts, part)
+		fmt.Println("recorded the title screen")
+	}
+
 	if err := s.PrepareCanvas(track); err != nil {
-		log.Fatal(err)
+		return err
 	}
-	fmt.Printf("canvas ready in %s, music %q at its first note\n",
-		time.Since(start).Round(time.Millisecond), *music)
+	fmt.Printf("canvas ready in %s, %q at its first note\n",
+		time.Since(start).Round(time.Millisecond), c.music)
 
-	if *in != "" {
-		f, err := os.Open(*in)
-		if err != nil {
-			log.Fatal(err)
-		}
-		src, _, err := image.Decode(f)
-		f.Close()
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		c := mp.NewCanvas()
-		list, err := mp.ParseColorRules(*rules)
-		if err != nil {
-			log.Fatal(err)
-		}
-		c.DrawImageWith(src, mp.FitMode(*fit), mp.QuantizeOptions{
-			Dither: *dither, Vivid: *vivid, Rules: list,
-		})
-		s.SetCanvas(c)
-		s.RunFrames(8)
+	ops, err := buildOps(s, c)
+	if err != nil {
+		return err
 	}
 
-	if *ops != "" {
-		raw, err := os.ReadFile(*ops)
+	if len(ops) > 0 {
+		part, err := recordDrawing(s, c, tmp, ops)
 		if err != nil {
-			log.Fatal(err)
+			return err
+		}
+		if part.Video != "" {
+			parts = append(parts, part)
+		}
+	}
+
+	if c.video != "" && len(parts) > 0 {
+		// The console fades through black between its own screens, so the
+		// seams do the same rather than cutting.
+		if err := capture.JoinWith(c.video, parts, capture.JoinOptions{
+			FadeSeconds: 0.6, OpenCold: true, EndCold: true,
+		}); err != nil {
+			return err
+		}
+		fmt.Printf("wrote %s (%.1fs, with sound)\n", c.video, capture.Duration(c.video))
+	}
+
+	return writeStill(s, c, start)
+}
+
+// buildOps decides what to draw: an operations file, an imported image
+// replayed as strokes, or an imported image pasted straight in.
+func buildOps(s *session.Session, c config) ([]mp.Op, error) {
+	if c.opsFile != "" {
+		raw, err := os.ReadFile(c.opsFile)
+		if err != nil {
+			return nil, err
 		}
 		var list []mp.Op
 		if err := json.Unmarshal(raw, &list); err != nil {
-			log.Fatal(err)
+			return nil, err
 		}
-
-		opt := session.DrawOptions{TargetSeconds: *secs, FPS: *fps, HoldFrames: int(*fps * 1.5)}
-		opt.CaptureAudio = *video != ""
-		if *video != "" {
-			f := s.Frame()
-			v, err := capture.NewVideo(*video, f.Rect.Dx(), f.Rect.Dy(), *fps, *scale)
-			if err != nil {
-				log.Fatal(err)
-			}
-			opt.Video = v
-			defer func() {
-				if err := v.Close(); err != nil {
-					log.Fatal(err)
-				}
-				silent := filepath.Join(os.TempDir(), "mp-draw-silent.mp4")
-				wav := filepath.Join(os.TempDir(), "mp-draw.wav")
-				os.Rename(*video, silent)
-				if err := capture.WriteWAV(wav, drawAudio, s.SampleRate()); err != nil {
-					log.Fatal(err)
-				}
-				if err := capture.Mux(*video, silent, wav); err != nil {
-					log.Fatal(err)
-				}
-				os.Remove(silent)
-				os.Remove(wav)
-				fmt.Printf("wrote %s (with sound)\n", *video)
-			}()
-		}
-		samples, err := s.Draw(list, opt)
-		if err != nil {
-			log.Fatal(err)
-		}
-		drawAudio = samples
-		fmt.Printf("drew %d operations\n", len(list))
+		return list, nil
+	}
+	if c.image == "" {
+		return nil, nil
 	}
 
-	// Park the cursor out of the way of the shot.
+	f, err := os.Open(c.image)
+	if err != nil {
+		return nil, err
+	}
+	src, _, err := image.Decode(f)
+	f.Close()
+	if err != nil {
+		return nil, fmt.Errorf("decoding %s: %w", c.image, err)
+	}
+
+	rules, err := mp.ParseColorRules(c.rules)
+	if err != nil {
+		return nil, err
+	}
+
+	target := mp.NewCanvas()
+	target.DrawImageWith(src, mp.FitMode(c.fit), mp.QuantizeOptions{
+		Dither: c.dither, Vivid: c.vivid, Rules: rules,
+	})
+
+	if !c.strokes {
+		s.SetCanvas(target)
+		s.RunFrames(8)
+		return nil, nil
+	}
+
+	ops := mp.CanvasToOps(target)
+	fmt.Printf("%d strokes to draw\n", len(ops))
+	return ops, nil
+}
+
+func recordTitle(s *session.Session, c config, tmp string) (capture.Part, error) {
+	if err := s.PrepareTitle(); err != nil {
+		return capture.Part{}, err
+	}
+	video := filepath.Join(tmp, "title.mp4")
+	audio := filepath.Join(tmp, "title.wav")
+
+	fr := s.Frame()
+	v, err := capture.NewVideo(video, fr.Rect.Dx(), fr.Rect.Dy(), c.fps, c.scale)
+	if err != nil {
+		return capture.Part{}, err
+	}
+	s.Core().StartAudioCapture()
+	for i := 0; i < int(c.titleSeconds*c.fps); i++ {
+		s.Run()
+		if err := v.Write(s.Frame()); err != nil {
+			return capture.Part{}, err
+		}
+	}
+	samples := s.Core().StopAudioCapture()
+	if err := v.Close(); err != nil {
+		return capture.Part{}, err
+	}
+	if err := capture.WriteWAV(audio, samples, s.SampleRate()); err != nil {
+		return capture.Part{}, err
+	}
+	return capture.Part{Video: video, Audio: audio}, nil
+}
+
+func recordDrawing(s *session.Session, c config, tmp string, ops []mp.Op) (capture.Part, error) {
+	opt := session.DrawOptions{
+		TargetSeconds: c.target,
+		FPS:           c.fps,
+		CaptureAudio:  c.video != "" || c.wav != "",
+	}
+
+	video := ""
+	if c.video != "" {
+		video = filepath.Join(tmp, "draw.mp4")
+		fr := s.Frame()
+		v, err := capture.NewVideo(video, fr.Rect.Dx(), fr.Rect.Dy(), c.fps, c.scale)
+		if err != nil {
+			return capture.Part{}, err
+		}
+		opt.Video = v
+		opt.HoldFrames = int(c.fps * 2)
+	}
+
+	samples, err := s.Draw(ops, opt)
+	if opt.Video != nil {
+		if cerr := opt.Video.Close(); err == nil {
+			err = cerr
+		}
+	}
+	if err != nil {
+		return capture.Part{}, err
+	}
+	fmt.Printf("drew %d operations\n", len(ops))
+
+	if !opt.CaptureAudio {
+		return capture.Part{}, nil
+	}
+
+	audio := c.wav
+	if audio == "" {
+		audio = filepath.Join(tmp, "draw.wav")
+	}
+	if err := capture.WriteWAV(audio, samples, s.SampleRate()); err != nil {
+		return capture.Part{}, err
+	}
+	return capture.Part{Video: video, Audio: audio}, nil
+}
+
+func writeStill(s *session.Session, c config, start time.Time) error {
 	s.SetCursor(240, 20)
 	s.RunFrames(4)
 
-	var img image.Image
-	if *full {
+	var img image.Image = s.Canvas().ToImage()
+	if c.full {
 		img = s.Frame()
-	} else {
-		img = s.Canvas().ToImage()
 	}
 
-	os.MkdirAll("out", 0o755)
-	fh, err := os.Create(*out)
+	if err := os.MkdirAll(filepath.Dir(c.out), 0o755); err != nil {
+		return err
+	}
+	f, err := os.Create(c.out)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
-	defer fh.Close()
-	if err := png.Encode(fh, img); err != nil {
-		log.Fatal(err)
+	defer f.Close()
+	if err := png.Encode(f, img); err != nil {
+		return err
 	}
+
 	b := img.Bounds()
-	fmt.Printf("wrote %s (%dx%d) in %s\n", *out, b.Dx(), b.Dy(), time.Since(start).Round(time.Millisecond))
+	fmt.Printf("wrote %s (%dx%d) in %s\n",
+		c.out, b.Dx(), b.Dy(), time.Since(start).Round(time.Millisecond))
+	return nil
 }

@@ -1,4 +1,4 @@
-// song builds a chord chart into a Mario Paint composition and records it.
+// Command mcpaint-song builds a chord chart into a Mario Paint composition and records it.
 package main
 
 import (
@@ -7,7 +7,6 @@ import (
 	"image/png"
 	"log"
 	"os"
-	"strings"
 
 	"github.com/TheLiux/MCPaint/internal/capture"
 	"github.com/TheLiux/MCPaint/internal/mp"
@@ -220,5 +219,4 @@ func main() {
 
 	fmt.Printf("wrote %s (%.1fs), %s and %s\n",
 		*out, capture.Duration(*out), *wav, *still)
-	_ = strings.TrimSpace
 }

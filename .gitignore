@@ -11,3 +11,11 @@
 *.wav
 *.mp4
 /build/
+
+# macOS
+.DS_Store
+
+# stray build output
+/mcpaint-cli
+/mcpaint-song
+/mcpaint
