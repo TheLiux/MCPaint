@@ -65,6 +65,26 @@ Register it with an MCP client:
 | `play` | Play the song and record audio, optionally with video |
 | `record_session` | One clip: the picture being drawn, then the song playing |
 
+## Colour
+
+Sixteen fixed colours with no blending, so how a source image is matched to
+them matters more than usual.
+
+- Matching is done in **Oklab**. Luminance-weighted distance collapsed
+  saturated colours onto grey, because the weighting leans so heavily on the
+  green channel.
+- **Dithering** makes a photograph read as one and makes flat artwork read as
+  noise. Leave it on for photos, off for logos.
+- **Vivid** (`-vivid`) weighs hue ahead of lightness, which suits flat art.
+- Some colours have no honest neighbour at all. Google's amber yellow sits
+  between the palette's lemon and its olive, so every weighting lands on peach
+  or olive. **Pinning** (`-map "#F4B400=yellow"`) names the substitution
+  instead, and pinned pixels take no dither error so flat areas stay flat.
+
+Dark photographs are worth lifting before they are quantized -- the palette
+has no dark greys, only black -- for example with
+`ffmpeg -i in.png -vf "eq=brightness=0.18:contrast=1.6:saturation=1.8" out.png`.
+
 ## Canvas music
 
 The canvas has its own background track, and `draw` and `record_session` take a
@@ -88,18 +108,38 @@ The limits are tight and shape everything:
 - **Pitches** are 13 diatonic staff positions, B3 to G5. There are no sharps
   or flats, so imported music gets snapped.
 
-## Development CLI
+## Command line
+
+`cmd/mcpaint-cli` drives the game directly, without the MCP server.
 
 ```sh
-# Draw an image onto the canvas and screenshot it
+# Redraw an image and screenshot the result
 go run ./cmd/mcpaint-cli -image picture.png -out out/canvas.png
 
-# Play a set of drawing operations and record the timelapse, with music
-go run ./cmd/mcpaint-cli -ops testdata/scene.json -video out/scene.mp4 -full -music theme-1
+# Record it being drawn stroke by stroke, from boot, with music
+go run ./cmd/mcpaint-cli -image picture.png -strokes -title 3 \
+    -video out/picture.mp4 -out out/picture.png -seconds 20
 
-# Drive the MCP server end to end
-go build -o build/mcpaint ./cmd/mcpaint && go run ./tools/mcptest
+# Flat artwork: no dithering, hue-first matching, brand colours pinned
+go run ./cmd/mcpaint-cli -image logo.png -fit contain -dither=false -vivid \
+    -map "#4285F4=blue,#F4B400=yellow" -out out/logo.png
+
+# Play a set of drawing operations
+go run ./cmd/mcpaint-cli -ops testdata/scene.json -video out/scene.mp4 -full
 ```
+
+`cmd/mcpaint-song` turns a chord chart into a composition and records it.
+
+## Tests
+
+```sh
+go test ./...
+```
+
+The unit tests in `internal/mp` need neither a ROM nor a core, which is where
+most of the logic lives. The end-to-end test in `cmd/mcpaint` drives the
+real server over stdio and skips unless `MCPAINT_CORE` and `MCPAINT_ROM`
+are set.
 
 ## Notes on the game
 
