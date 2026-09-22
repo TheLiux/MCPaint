@@ -29,10 +29,11 @@ type server struct {
 	outDir  string
 	sess    *session.Session
 	current screen
+	track   session.BGM
 }
 
 func newServer(cfg session.Config, outDir string) *server {
-	return &server{cfg: cfg, outDir: outDir}
+	return &server{cfg: cfg, outDir: outDir, track: session.BGMTheme1}
 }
 
 // open boots the emulator on first use. Booting is deferred so the server
@@ -56,12 +57,12 @@ func (s *server) open() (*session.Session, error) {
 // otherwise roll the canvas and the song back to whatever they were when the
 // cache was made. So the content is read out of WRAM first and written back
 // afterwards.
-func (s *server) switchTo(target screen) (*session.Session, error) {
+func (s *server) switchTo(target screen, force bool) (*session.Session, error) {
 	sess, err := s.open()
 	if err != nil {
 		return nil, err
 	}
-	if s.current == target {
+	if s.current == target && !force {
 		return sess, nil
 	}
 
@@ -76,7 +77,7 @@ func (s *server) switchTo(target screen) (*session.Session, error) {
 
 	switch target {
 	case screenCanvas:
-		err = sess.BootToCanvas()
+		err = sess.PrepareCanvas(s.track)
 	case screenComposer:
 		err = sess.OpenComposer()
 	default:
@@ -97,9 +98,31 @@ func (s *server) switchTo(target screen) (*session.Session, error) {
 	return sess, nil
 }
 
-func (s *server) canvas() (*session.Session, error) { return s.switchTo(screenCanvas) }
+func (s *server) canvas() (*session.Session, error) { return s.switchTo(screenCanvas, false) }
 
-func (s *server) composer() (*session.Session, error) { return s.switchTo(screenComposer) }
+// freshCanvas returns to the canvas with the background track rewound to its
+// first note, even if the session is already there.
+//
+// Recording needs this: a tool that simply stays put would open partway
+// through the tune.
+func (s *server) freshCanvas() (*session.Session, error) {
+	return s.switchTo(screenCanvas, true)
+}
+
+// setTrack changes the canvas background track, if one was named.
+func (s *server) setTrack(name string) error {
+	if name == "" {
+		return nil
+	}
+	t, err := session.ParseBGM(name)
+	if err != nil {
+		return err
+	}
+	s.track = t
+	return nil
+}
+
+func (s *server) composer() (*session.Session, error) { return s.switchTo(screenComposer, false) }
 
 func (s *server) close() {
 	if s.sess != nil {
