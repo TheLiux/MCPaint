@@ -31,12 +31,17 @@ type PlayOptions struct {
 //
 // The audio is whatever the SPC700 actually produces, captured from the same
 // run that produced the frames, so picture and sound need no resynchronising.
+//
+// STOP is pressed first to rewind. Without it a second playback is silent:
+// the playhead is still parked at the end of the previous run, and PLAY
+// resumes from there rather than starting over.
 func (s *Session) Play(opt PlayOptions) ([]int16, error) {
 	frames := opt.Frames
 	if frames <= 0 {
 		frames = 600
 	}
 
+	s.Click(ComposerStopX, ComposerStopY)
 	s.Click(ComposerPlayX, ComposerPlayY)
 	s.core.StartAudioCapture()
 
