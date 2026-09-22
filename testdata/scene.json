@@ -1,0 +1,403 @@
+[
+ {
+  "kind": "rect",
+  "points": [
+   {
+    "x": 0,
+    "y": 0
+   },
+   {
+    "x": 247,
+    "y": 108
+   }
+  ],
+  "color": 6,
+  "filled": true
+ },
+ {
+  "kind": "rect",
+  "points": [
+   {
+    "x": 0,
+    "y": 109
+   },
+   {
+    "x": 247,
+    "y": 163
+   }
+  ],
+  "color": 5,
+  "filled": true
+ },
+ {
+  "kind": "ellipse",
+  "points": [
+   {
+    "x": 196,
+    "y": 10
+   },
+   {
+    "x": 236,
+    "y": 50
+   }
+  ],
+  "color": 3,
+  "filled": true
+ },
+ {
+  "kind": "ellipse",
+  "points": [
+   {
+    "x": -20,
+    "y": 70
+   },
+   {
+    "x": 90,
+    "y": 130
+   }
+  ],
+  "color": 4,
+  "filled": true
+ },
+ {
+  "kind": "ellipse",
+  "points": [
+   {
+    "x": 70,
+    "y": 80
+   },
+   {
+    "x": 190,
+    "y": 135
+   }
+  ],
+  "color": 4,
+  "filled": true
+ },
+ {
+  "kind": "rect",
+  "points": [
+   {
+    "x": 30,
+    "y": 95
+   },
+   {
+    "x": 100,
+    "y": 145
+   }
+  ],
+  "color": 10,
+  "filled": true
+ },
+ {
+  "kind": "rect",
+  "points": [
+   {
+    "x": 30,
+    "y": 95
+   },
+   {
+    "x": 100,
+    "y": 145
+   }
+  ],
+  "color": 13,
+  "size": 1
+ },
+ {
+  "kind": "pencil",
+  "points": [
+   {
+    "x": 24,
+    "y": 95
+   },
+   {
+    "x": 65,
+    "y": 66
+   },
+   {
+    "x": 106,
+    "y": 95
+   },
+   {
+    "x": 24,
+    "y": 95
+   }
+  ],
+  "color": 1,
+  "size": 2
+ },
+ {
+  "kind": "fill",
+  "points": [
+   {
+    "x": 65,
+    "y": 85
+   }
+  ],
+  "color": 1
+ },
+ {
+  "kind": "rect",
+  "points": [
+   {
+    "x": 52,
+    "y": 118
+   },
+   {
+    "x": 72,
+    "y": 145
+   }
+  ],
+  "color": 8,
+  "filled": true
+ },
+ {
+  "kind": "rect",
+  "points": [
+   {
+    "x": 38,
+    "y": 105
+   },
+   {
+    "x": 50,
+    "y": 117
+   }
+  ],
+  "color": 12,
+  "filled": true
+ },
+ {
+  "kind": "rect",
+  "points": [
+   {
+    "x": 38,
+    "y": 105
+   },
+   {
+    "x": 50,
+    "y": 117
+   }
+  ],
+  "color": 13,
+  "size": 1
+ },
+ {
+  "kind": "rect",
+  "points": [
+   {
+    "x": 160,
+    "y": 110
+   },
+   {
+    "x": 170,
+    "y": 150
+   }
+  ],
+  "color": 8,
+  "filled": true
+ },
+ {
+  "kind": "ellipse",
+  "points": [
+   {
+    "x": 138,
+    "y": 74
+   },
+   {
+    "x": 192,
+    "y": 124
+   }
+  ],
+  "color": 5,
+  "filled": true
+ },
+ {
+  "kind": "spray",
+  "points": [
+   {
+    "x": 150,
+    "y": 90
+   },
+   {
+    "x": 180,
+    "y": 95
+   },
+   {
+    "x": 155,
+    "y": 110
+   },
+   {
+    "x": 178,
+    "y": 112
+   }
+  ],
+  "color": 4,
+  "size": 3,
+  "density": 14
+ },
+ {
+  "kind": "spray",
+  "points": [
+   {
+    "x": 40,
+    "y": 22
+   },
+   {
+    "x": 70,
+    "y": 20
+   },
+   {
+    "x": 100,
+    "y": 26
+   }
+  ],
+  "color": 12,
+  "size": 5,
+  "density": 20
+ },
+ {
+  "kind": "spray",
+  "points": [
+   {
+    "x": 120,
+    "y": 44
+   },
+   {
+    "x": 150,
+    "y": 42
+   }
+  ],
+  "color": 12,
+  "size": 4,
+  "density": 18
+ },
+ {
+  "kind": "pencil",
+  "points": [
+   {
+    "x": 120,
+    "y": 20
+   },
+   {
+    "x": 126,
+    "y": 14
+   },
+   {
+    "x": 132,
+    "y": 20
+   }
+  ],
+  "color": 13,
+  "size": 1
+ },
+ {
+  "kind": "pencil",
+  "points": [
+   {
+    "x": 136,
+    "y": 28
+   },
+   {
+    "x": 142,
+    "y": 22
+   },
+   {
+    "x": 148,
+    "y": 28
+   }
+  ],
+  "color": 13,
+  "size": 1
+ },
+ {
+  "kind": "rect",
+  "points": [
+   {
+    "x": 196,
+    "y": 128
+   },
+   {
+    "x": 200,
+    "y": 152
+   }
+  ],
+  "color": 9,
+  "filled": true
+ },
+ {
+  "kind": "rect",
+  "points": [
+   {
+    "x": 206,
+    "y": 128
+   },
+   {
+    "x": 210,
+    "y": 152
+   }
+  ],
+  "color": 9,
+  "filled": true
+ },
+ {
+  "kind": "rect",
+  "points": [
+   {
+    "x": 216,
+    "y": 128
+   },
+   {
+    "x": 220,
+    "y": 152
+   }
+  ],
+  "color": 9,
+  "filled": true
+ },
+ {
+  "kind": "rect",
+  "points": [
+   {
+    "x": 226,
+    "y": 128
+   },
+   {
+    "x": 230,
+    "y": 152
+   }
+  ],
+  "color": 9,
+  "filled": true
+ },
+ {
+  "kind": "rect",
+  "points": [
+   {
+    "x": 236,
+    "y": 128
+   },
+   {
+    "x": 240,
+    "y": 152
+   }
+  ],
+  "color": 9,
+  "filled": true
+ },
+ {
+  "kind": "rect",
+  "points": [
+   {
+    "x": 196,
+    "y": 133
+   },
+   {
+    "x": 243,
+    "y": 136
+   }
+  ],
+  "color": 9,
+  "filled": true
+ }
+]
