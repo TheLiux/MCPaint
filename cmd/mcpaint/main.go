@@ -93,6 +93,13 @@ func main() {
 			"composer screen scrolling along with it.",
 	}, srv.play)
 
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "record_session",
+		Description: "Record one clip that shows the picture being drawn and then " +
+			"the song playing, with sound. Use it when the point is to watch " +
+			"Mario Paint work, rather than to collect the files separately.",
+	}, srv.recordSession)
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

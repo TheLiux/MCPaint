@@ -41,7 +41,7 @@ func show(res *mcp.CallToolResult, err error) {
 func main() {
 	ctx := context.Background()
 	cmd := exec.Command("./build/mcpaint")
-	cmd.Env = append(os.Environ())
+	cmd.Env = os.Environ()
 	cmd.Stderr = os.Stderr
 
 	client := mcp.NewClient(&mcp.Implementation{Name: "mcptest", Version: "0"}, nil)
@@ -115,4 +115,24 @@ func main() {
 	})
 
 	call("screenshot", map[string]any{"outPath": "out/mcp_shot.png", "fullScreen": true})
+
+	call("record_session", map[string]any{
+		"clear": true,
+		"operations": []any{
+			map[string]any{"kind": "rect", "color": "cyan", "filled": true,
+				"points": []any{map[string]int{"x": 0, "y": 0}, map[string]int{"x": 247, "y": 110}}},
+			map[string]any{"kind": "rect", "color": "green", "filled": true,
+				"points": []any{map[string]int{"x": 0, "y": 111}, map[string]int{"x": 247, "y": 163}}},
+			map[string]any{"kind": "ellipse", "color": "yellow", "filled": true,
+				"points": []any{map[string]int{"x": 20, "y": 14}, map[string]int{"x": 56, "y": 50}}},
+			map[string]any{"kind": "pencil", "color": "red", "size": 3,
+				"points": []any{map[string]int{"x": 90, "y": 120}, map[string]int{"x": 130, "y": 70},
+					map[string]int{"x": 170, "y": 120}, map[string]int{"x": 90, "y": 120}}},
+			map[string]any{"kind": "fill", "color": "magenta",
+				"points": []any{map[string]int{"x": 130, "y": 100}}},
+		},
+		"drawSeconds": 5,
+		"songSeconds": 6,
+		"outPath":     "out/mcp_session.mp4",
+	})
 }
