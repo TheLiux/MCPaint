@@ -10,3 +10,4 @@
 *.png
 *.wav
 *.mp4
+/build/
