@@ -161,3 +161,70 @@ func (s *Session) Run()               { s.core.Run() }
 func (s *Session) RunFrames(n int)    { s.core.RunFrames(n) }
 func (s *Session) Frame() *image.RGBA { return s.core.Frame() }
 func (s *Session) Core() *retro.Core  { return s.core }
+
+// Composer navigation. The music tool lives on the second page of the bottom
+// toolbar, behind the arrow at the far right.
+const (
+	toolbarY       = 210
+	toolbarNextX   = 232
+	toolbarMusicX  = 103
+	ComposerPlayX  = 58
+	ComposerPlayY  = 178
+	ComposerStopX  = 28
+	ComposerStopY  = 178
+	ComposerLoopX  = 92
+	ComposerLoopY  = 178
+	ComposerClearX = 216
+	ComposerClearY = 182
+)
+
+// Click presses the left mouse button at a screen position and lets the game
+// settle. Coordinates are screen pixels, the same space as the cursor.
+func (s *Session) Click(x, y int) {
+	for i := 0; i < 3; i++ {
+		s.SetCursor(x, y)
+		s.core.SetMouse(retro.MouseState{})
+		s.core.Run()
+	}
+	for i := 0; i < 6; i++ {
+		s.SetCursor(x, y)
+		s.core.SetMouse(retro.MouseState{Left: true})
+		s.core.Run()
+	}
+	for i := 0; i < 12; i++ {
+		s.SetCursor(x, y)
+		s.core.SetMouse(retro.MouseState{})
+		s.core.Run()
+	}
+}
+
+// OpenComposer leaves the game on the music composer screen.
+func (s *Session) OpenComposer() error {
+	cache := filepath.Join(s.cfg.CacheDir, "composer-"+s.stateKey+".state")
+	if b, err := os.ReadFile(cache); err == nil {
+		if err := s.core.Unserialize(b); err == nil {
+			s.core.RunFrames(2)
+			return nil
+		}
+	}
+
+	if err := s.BootToCanvas(); err != nil {
+		return err
+	}
+	s.Click(toolbarNextX, toolbarY)
+	s.Click(toolbarMusicX, toolbarY)
+	s.core.RunFrames(120)
+
+	if b, err := s.core.Serialize(); err == nil {
+		os.WriteFile(cache, b, 0o644)
+	}
+	return nil
+}
+
+// Song returns the raw song bytes from WRAM.
+func (s *Session) Song() []byte {
+	return s.wram[mp.SongBase : mp.SongBase+mp.SongBytes]
+}
+
+// WRAM exposes the console's work RAM for tools that need raw access.
+func (s *Session) WRAM() []byte { return s.wram }
