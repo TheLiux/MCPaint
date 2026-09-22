@@ -276,3 +276,33 @@ func minMax(a, b int) (int, int) {
 	}
 	return a, b
 }
+
+// CanvasToOps turns a finished canvas into the strokes that would produce it:
+// each row becomes a run of same-coloured line segments.
+//
+// Replaying these is what makes an imported photograph appear as something
+// Mario Paint drew, rather than something pasted into it. Background-coloured
+// runs are skipped, since the canvas already starts that colour.
+func CanvasToOps(c *Canvas) []Op {
+	var ops []Op
+	for y := 0; y < VisibleH; y++ {
+		x := 0
+		for x < VisibleW {
+			col := c.At(VisibleX+x, VisibleY+y)
+			run := x
+			for run < VisibleW && c.At(VisibleX+run, VisibleY+y) == col {
+				run++
+			}
+			if col != 0 {
+				ops = append(ops, Op{
+					Kind:   OpLine,
+					Points: []Point{{x, y}, {run - 1, y}},
+					Color:  col,
+					Size:   1,
+				})
+			}
+			x = run
+		}
+	}
+	return ops
+}
