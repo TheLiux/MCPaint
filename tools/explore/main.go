@@ -1,17 +1,26 @@
-// Explore: full music pass — inject, play, record.
+// Explore: does a second playback need a rewind first?
 package main
 
 import (
 	"fmt"
-	"image/png"
 	"log"
 	"math"
 	"os"
 
-	"github.com/TheLiux/MCPaint/internal/capture"
 	"github.com/TheLiux/MCPaint/internal/mp"
 	"github.com/TheLiux/MCPaint/internal/session"
 )
+
+func rms(s []int16) float64 {
+	if len(s) == 0 {
+		return 0
+	}
+	var sum float64
+	for _, v := range s {
+		sum += float64(v) * float64(v)
+	}
+	return math.Sqrt(sum / float64(len(s)))
+}
 
 func main() {
 	s, err := session.Open(session.Config{
@@ -25,46 +34,38 @@ func main() {
 	if err := s.OpenComposer(); err != nil {
 		log.Fatal(err)
 	}
-	os.MkdirAll("out", 0o755)
 
-	s.Click(session.ComposerClearX, session.ComposerClearY)
-	s.RunFrames(40)
-
-	song := mp.NewSong()
-	for col := 0; col < 32; col++ {
-		song.Add(col, byte(col%13)+1, 0)
-		if col%4 == 0 {
-			song.Add(col, byte((col+4)%13)+1, 3)
+	scale := func() *mp.Song {
+		song := mp.NewSong()
+		for col := 0; col < 12; col++ {
+			song.Add(col, byte(col%13)+1, 0)
 		}
+		song.Tempo = 0x30
+		return song
 	}
-	song.Tempo = 0x28
-	s.SetSong(song)
+
+	s.SetSong(scale())
+	s.RunFrames(10)
+	a, _ := s.Play(session.PlayOptions{Frames: 240})
+	fmt.Printf("play 1:              rms=%.0f\n", rms(a))
+
+	s.SetSong(scale())
+	s.RunFrames(10)
+	b, _ := s.Play(session.PlayOptions{Frames: 240})
+	fmt.Printf("play 2 (no rewind):  rms=%.0f\n", rms(b))
+
+	// Try a STOP press before playing again.
+	s.Click(session.ComposerStopX, session.ComposerStopY)
 	s.RunFrames(20)
+	c, _ := s.Play(session.PlayOptions{Frames: 240})
+	fmt.Printf("play 3 (STOP first): rms=%.0f\n", rms(c))
 
-	v, _ := capture.NewVideo("out/m3_song.mp4", 256, 224, s.FPS(), 3)
-	samples, err := s.Play(session.PlayOptions{Frames: 600, Video: v})
-	if err != nil {
-		log.Fatal(err)
+	// Try dragging the scroll bar back to the start.
+	s.Click(session.ComposerStopX, session.ComposerStopY)
+	s.RunFrames(10)
+	for i := 0; i < 12; i++ {
+		s.Click(196, 152) // left arrow of the scroll bar
 	}
-	v.Close()
-	fh, _ := os.Create("out/m3_after.png")
-	png.Encode(fh, s.Frame())
-	fh.Close()
-
-	capture.WriteWAV("out/m3_song.wav", samples, s.SampleRate())
-
-	// Report loudness per second so a silent tail is obvious.
-	per := s.SampleRate() * 2
-	fmt.Printf("%d notes, %.2fs audio\n", len(song.Notes), float64(len(samples)/2)/float64(s.SampleRate()))
-	for i := 0; i*per < len(samples); i++ {
-		w := samples[i*per:]
-		if len(w) > per {
-			w = w[:per]
-		}
-		var sum float64
-		for _, x := range w {
-			sum += float64(x) * float64(x)
-		}
-		fmt.Printf("  s%-2d rms=%.0f\n", i, math.Sqrt(sum/float64(len(w))))
-	}
+	d, _ := s.Play(session.PlayOptions{Frames: 240})
+	fmt.Printf("play 4 (scroll home): rms=%.0f\n", rms(d))
 }

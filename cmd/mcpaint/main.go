@@ -79,6 +79,14 @@ func main() {
 	}, srv.compose)
 
 	mcp.AddTool(s, &mcp.Tool{
+		Name: "import_midi",
+		Description: "Load a MIDI file into the composer, fitting it to what the " +
+			"game can play. The report says what had to give: notes transposed by " +
+			"octaves, sharps and flats snapped to the staff, and voices dropped " +
+			"where a column already held three.",
+	}, srv.importMIDI)
+
+	mcp.AddTool(s, &mcp.Tool{
 		Name: "play",
 		Description: "Play the current song and record it. The audio is what the " +
 			"SNES sound chip actually produces. Set videoPath to also capture the " +

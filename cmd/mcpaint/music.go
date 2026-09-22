@@ -157,3 +157,58 @@ func (s *server) play(_ context.Context, _ *mcp.CallToolRequest, in playInput) (
 	}
 	return nil, out, nil
 }
+
+type importMIDIInput struct {
+	Path            string            `json:"path" jsonschema:"path to a Standard MIDI File"`
+	StepsPerQuarter int               `json:"stepsPerQuarter,omitempty" jsonschema:"columns per quarter note, default 2; lower it to fit a longer piece into 96 columns"`
+	Transpose       int               `json:"transpose,omitempty" jsonschema:"shift every note by this many semitones before fitting"`
+	Tempo           int               `json:"tempo,omitempty" jsonschema:"1 slowest to 255 fastest, default 18"`
+	Loop            bool              `json:"loop,omitempty"`
+	Instruments     map[string]string `json:"instruments,omitempty" jsonschema:"MIDI channel number to instrument name, e.g. {\"0\": \"mario\"}"`
+}
+
+type importMIDIOutput struct {
+	*mp.ImportReport
+}
+
+func (s *server) importMIDI(_ context.Context, _ *mcp.CallToolRequest, in importMIDIInput) (*mcp.CallToolResult, importMIDIOutput, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	sess, err := s.composer()
+	if err != nil {
+		return nil, importMIDIOutput{}, err
+	}
+
+	opt := mp.MIDIOptions{StepsPerQuarter: in.StepsPerQuarter, Transpose: in.Transpose}
+	if len(in.Instruments) > 0 {
+		opt.Instruments = map[int]byte{}
+		for ch, name := range in.Instruments {
+			var n int
+			if _, err := fmt.Sscanf(ch, "%d", &n); err != nil || n < 0 || n > 15 {
+				return nil, importMIDIOutput{}, fmt.Errorf("bad MIDI channel %q (want 0..15)", ch)
+			}
+			v, err := mp.ParseInstrument(name)
+			if err != nil {
+				return nil, importMIDIOutput{}, fmt.Errorf("channel %s: %w", ch, err)
+			}
+			opt.Instruments[n] = v
+		}
+	}
+
+	song, rep, err := mp.ImportMIDI(in.Path, opt)
+	if err != nil {
+		return nil, importMIDIOutput{}, err
+	}
+	if in.Tempo > 0 {
+		if in.Tempo > 255 {
+			return nil, importMIDIOutput{}, fmt.Errorf("tempo %d is out of range (1..255)", in.Tempo)
+		}
+		song.Tempo = byte(in.Tempo)
+	}
+	song.Loop = in.Loop
+
+	sess.SetSong(song)
+	sess.RunFrames(10)
+	return nil, importMIDIOutput{ImportReport: rep}, nil
+}

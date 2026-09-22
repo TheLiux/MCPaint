@@ -84,6 +84,18 @@ func main() {
 		"seconds":   4,
 	})
 
+	call("import_midi", map[string]any{
+		"path":            "testdata/ode.mid",
+		"stepsPerQuarter": 1,
+		"tempo":           40,
+		"instruments":     map[string]string{"0": "mario", "1": "gameboy"},
+	})
+
+	call("play", map[string]any{
+		"seconds": 8,
+		"wavPath": "out/mcp_ode.wav",
+	})
+
 	call("compose", map[string]any{
 		"tempo": 40,
 		"notes": []any{
