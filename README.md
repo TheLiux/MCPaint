@@ -60,6 +60,7 @@ Register it with an MCP client:
 | `compose` | Write notes into the music composer |
 | `import_midi` | Load a MIDI file, with a report of what had to give |
 | `play` | Play the song and record audio, optionally with video |
+| `record_session` | One clip: the picture being drawn, then the song playing |
 
 ## What the game allows
 
