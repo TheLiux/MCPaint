@@ -29,6 +29,7 @@ static void     (*p_get_system_av_info)(struct retro_system_av_info *);
 static bool     (*p_load_game)(const struct retro_game_info *);
 static void     (*p_unload_game)(void);
 static void     (*p_run)(void);
+static void     (*p_reset)(void);
 static void    *(*p_get_memory_data)(unsigned);
 static size_t   (*p_get_memory_size)(unsigned);
 static size_t   (*p_serialize_size)(void);
@@ -123,6 +124,7 @@ int br_load(const char *path, char *errbuf, size_t errlen) {
     SYM(p_load_game,                "retro_load_game");
     SYM(p_unload_game,              "retro_unload_game");
     SYM(p_run,                      "retro_run");
+    SYM(p_reset,                    "retro_reset");
     SYM(p_get_memory_data,          "retro_get_memory_data");
     SYM(p_get_memory_size,          "retro_get_memory_size");
     SYM(p_serialize_size,           "retro_serialize_size");
@@ -153,6 +155,7 @@ void     br_init(void)        { p_init(); }
 void     br_deinit(void)      { p_deinit(); }
 unsigned br_api_version(void) { return p_api_version(); }
 void     br_run(void)         { p_run(); }
+void     br_reset(void)       { p_reset(); }
 void     br_unload_game(void) { p_unload_game(); }
 unsigned br_pixel_format(void){ return g_pixfmt; }
 

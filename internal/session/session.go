@@ -323,3 +323,22 @@ func (s *Session) alignToDownbeat() error {
 	}
 	return nil
 }
+
+// PrepareTitle leaves the game on its title screen, freshly booted.
+func (s *Session) PrepareTitle() error {
+	cache := filepath.Join(s.cfg.CacheDir, "title-"+s.stateKey+".state")
+	if b, err := os.ReadFile(cache); err == nil {
+		if err := s.core.Unserialize(b); err == nil {
+			s.core.RunFrames(2)
+			return nil
+		}
+	}
+
+	s.core.Reset()
+	s.core.RunFrames(240)
+
+	if b, err := s.core.Serialize(); err == nil {
+		os.WriteFile(cache, b, 0o644)
+	}
+	return nil
+}

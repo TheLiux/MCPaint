@@ -16,6 +16,7 @@ unsigned br_api_version(void);
 int    br_load_game(const char *path, const void *data, size_t size);
 void   br_unload_game(void);
 void   br_run(void);
+void   br_reset(void);
 
 void   br_get_av_info(struct retro_system_av_info *info);
 unsigned br_pixel_format(void);

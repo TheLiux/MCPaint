@@ -151,6 +151,9 @@ func (c *Core) Run() {
 	c.mu.Unlock()
 }
 
+// Reset restarts the machine, as the console's reset button would.
+func (c *Core) Reset() { C.br_reset() }
+
 // RunFrames advances n frames.
 func (c *Core) RunFrames(n int) {
 	for i := 0; i < n; i++ {
