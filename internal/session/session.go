@@ -167,7 +167,10 @@ func (s *Session) Core() *retro.Core  { return s.core }
 const (
 	toolbarY       = 210
 	toolbarNextX   = 232
-	toolbarMusicX  = 103
+	toolbarMusicX  = 103 // the composer
+	toolbarBGMX    = 151 // SELECT MUSIC, the canvas background track
+	toolbarExitX   = 14  // leaves a sub-screen
+	bgmSwitchX     = 95  // the switches down the left of the SELECT MUSIC list
 	ComposerPlayX  = 58
 	ComposerPlayY  = 178
 	ComposerStopX  = 28
@@ -228,3 +231,95 @@ func (s *Session) Song() []byte {
 
 // WRAM exposes the console's work RAM for tools that need raw access.
 func (s *Session) WRAM() []byte { return s.wram }
+
+// PrepareCanvas leaves the game on the canvas with a background track about to
+// play its first note, so a recording made from here opens on the downbeat.
+//
+// The state is cached per track: reaching it means walking through the SELECT
+// MUSIC screen twice, which is not free.
+func (s *Session) PrepareCanvas(track BGM) error {
+	cache := filepath.Join(s.cfg.CacheDir,
+		fmt.Sprintf("canvas-%s-%s.state", BGMName(track), s.stateKey))
+	if b, err := os.ReadFile(cache); err == nil {
+		if err := s.core.Unserialize(b); err == nil {
+			s.core.RunFrames(2)
+			return nil
+		}
+	}
+
+	if err := s.BootToCanvas(); err != nil {
+		return err
+	}
+	s.SetCanvas(mp.NewCanvas())
+	s.RestartBGM(track)
+
+	if track != BGMOff {
+		if err := s.alignToDownbeat(); err != nil {
+			return err
+		}
+	}
+
+	if b, err := s.core.Serialize(); err == nil {
+		os.WriteFile(cache, b, 0o644)
+	}
+	return nil
+}
+
+// frameIsLoud reports whether the frame just run produced any sound.
+func (s *Session) frameIsLoud() bool {
+	s.core.StartAudioCapture()
+	s.core.Run()
+	for _, v := range s.core.StopAudioCapture() {
+		if v > 200 || v < -200 {
+			return true
+		}
+	}
+	return false
+}
+
+// alignToDownbeat parks the session on the last silent frame before the tune
+// starts.
+//
+// Leaving the SELECT MUSIC screen plays a transition effect, and the tune only
+// begins some frames after the silence that follows it. Rather than hard-code
+// that gap, this runs ahead to find where the music actually starts and then
+// rewinds to just before it, which is what save states make cheap.
+func (s *Session) alignToDownbeat() error {
+	const maxFrames = 600
+
+	// Let the transition effect finish.
+	quiet := 0
+	for i := 0; i < maxFrames && quiet < 4; i++ {
+		if s.frameIsLoud() {
+			quiet = 0
+		} else {
+			quiet++
+		}
+	}
+	if quiet < 4 {
+		return fmt.Errorf("the screen transition never went quiet")
+	}
+
+	mark, err := s.core.Serialize()
+	if err != nil {
+		return err
+	}
+
+	steps := 0
+	for ; steps < maxFrames; steps++ {
+		if s.frameIsLoud() {
+			break
+		}
+	}
+	if steps >= maxFrames {
+		return fmt.Errorf("the background track never started")
+	}
+
+	if err := s.core.Unserialize(mark); err != nil {
+		return err
+	}
+	if steps > 1 {
+		s.core.RunFrames(steps - 1)
+	}
+	return nil
+}
