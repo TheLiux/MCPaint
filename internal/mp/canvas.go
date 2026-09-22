@@ -108,6 +108,33 @@ const (
 // a photograph rather than as flat blobs, but it hurts flat vector art, so it
 // is caller's choice.
 func (c *Canvas) DrawImage(src image.Image, fit FitMode, dither bool) {
+	c.DrawImageWith(src, fit, QuantizeOptions{Dither: dither})
+}
+
+// DrawImageVivid is DrawImage with a choice of colour matching. Vivid keeps
+// hue ahead of lightness, which suits flat artwork; leave it off for photos.
+func (c *Canvas) DrawImageVivid(src image.Image, fit FitMode, dither, vivid bool) {
+	c.DrawImageWith(src, fit, QuantizeOptions{Dither: dither, Vivid: vivid})
+}
+
+// QuantizeOptions tunes how a source image is reduced to the palette.
+type QuantizeOptions struct {
+	// Dither spreads the error across neighbouring pixels. It makes a
+	// photograph read as one and makes flat artwork read as noise.
+	Dither bool
+
+	// Vivid keeps hue ahead of lightness when matching.
+	Vivid bool
+
+	// Rules pin particular source colours to particular palette entries,
+	// overriding the match entirely. Pinned pixels take no dither error,
+	// so a logo's flat areas stay flat.
+	Rules []ColorRule
+}
+
+// DrawImageWith quantizes src onto the visible canvas area.
+func (c *Canvas) DrawImageWith(src image.Image, fit FitMode, opt QuantizeOptions) {
+	dither, vivid := opt.Dither, opt.Vivid
 	scaled := resize(src, fit)
 
 	// Work in float so diffused error is not truncated at every pixel.
@@ -118,6 +145,11 @@ func (c *Canvas) DrawImage(src image.Image, fit FitMode, dither bool) {
 			r, g, b, _ := scaled.At(x, y).RGBA()
 			buf[y*VisibleW+x] = rgb{float64(r >> 8), float64(g >> 8), float64(b >> 8)}
 		}
+	}
+
+	match := Nearest
+	if vivid {
+		match = NearestVivid
 	}
 
 	clamp := func(v float64) uint8 {
@@ -134,7 +166,14 @@ func (c *Canvas) DrawImage(src image.Image, fit FitMode, dither bool) {
 	for y := 0; y < VisibleH; y++ {
 		for x := 0; x < VisibleW; x++ {
 			p := buf[y*VisibleW+x]
-			idx := Nearest(clamp(p.r), clamp(p.g), clamp(p.b))
+			pr, pg, pb := clamp(p.r), clamp(p.g), clamp(p.b)
+
+			if idx, pinned := matchRule(opt.Rules, pr, pg, pb); pinned {
+				c.Set(VisibleX+x, VisibleY+y, idx)
+				continue
+			}
+
+			idx := match(pr, pg, pb)
 			c.Set(VisibleX+x, VisibleY+y, idx)
 
 			if !dither {
