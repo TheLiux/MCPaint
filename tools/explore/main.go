@@ -1,22 +1,17 @@
-// Explore: click along the bottom toolbar and see which screens open.
+// Explore: full music pass — inject, play, record.
 package main
 
 import (
-	"crypto/sha1"
 	"fmt"
 	"image/png"
 	"log"
+	"math"
 	"os"
 
-	"github.com/TheLiux/MCPaint/internal/retro"
+	"github.com/TheLiux/MCPaint/internal/capture"
+	"github.com/TheLiux/MCPaint/internal/mp"
 	"github.com/TheLiux/MCPaint/internal/session"
 )
-
-func hash(s *session.Session) string {
-	f := s.Frame()
-	h := sha1.Sum(f.Pix)
-	return fmt.Sprintf("%x", h[:5])
-}
 
 func main() {
 	s, err := session.Open(session.Config{
@@ -27,52 +22,49 @@ func main() {
 		log.Fatal(err)
 	}
 	defer s.Close()
-	if err := s.BootToCanvas(); err != nil {
+	if err := s.OpenComposer(); err != nil {
 		log.Fatal(err)
 	}
-	base, err := s.Core().Serialize()
+	os.MkdirAll("out", 0o755)
+
+	s.Click(session.ComposerClearX, session.ComposerClearY)
+	s.RunFrames(40)
+
+	song := mp.NewSong()
+	for col := 0; col < 32; col++ {
+		song.Add(col, byte(col%13)+1, 0)
+		if col%4 == 0 {
+			song.Add(col, byte((col+4)%13)+1, 3)
+		}
+	}
+	song.Tempo = 0x28
+	s.SetSong(song)
+	s.RunFrames(20)
+
+	v, _ := capture.NewVideo("out/m3_song.mp4", 256, 224, s.FPS(), 3)
+	samples, err := s.Play(session.PlayOptions{Frames: 600, Video: v})
 	if err != nil {
 		log.Fatal(err)
 	}
+	v.Close()
+	fh, _ := os.Create("out/m3_after.png")
+	png.Encode(fh, s.Frame())
+	fh.Close()
 
-	os.MkdirAll("out/toolbar", 0o755)
-	seen := map[string]string{}
+	capture.WriteWAV("out/m3_song.wav", samples, s.SampleRate())
 
-	for y := 204; y <= 216; y += 6 {
-		for x := 4; x < 252; x += 6 {
-			s.Core().Unserialize(base)
-			for i := 0; i < 3; i++ {
-				s.SetCursor(x, y)
-				s.Core().SetMouse(retro.MouseState{})
-				s.Core().Run()
-			}
-			for i := 0; i < 6; i++ {
-				s.SetCursor(x, y)
-				s.Core().SetMouse(retro.MouseState{Left: true})
-				s.Core().Run()
-			}
-			for i := 0; i < 60; i++ {
-				s.SetCursor(x, y)
-				s.Core().SetMouse(retro.MouseState{})
-				s.Core().Run()
-			}
-			// Park the cursor identically in every trial, otherwise its
-			// sprite alone makes each frame hash unique.
-			for i := 0; i < 8; i++ {
-				s.SetCursor(128, 100)
-				s.Core().Run()
-			}
-			h := hash(s)
-			if _, dup := seen[h]; dup {
-				continue
-			}
-			seen[h] = fmt.Sprintf("%d,%d", x, y)
-			name := fmt.Sprintf("out/toolbar/tb_%03d_%03d.png", x, y)
-			fh, _ := os.Create(name)
-			png.Encode(fh, s.Frame())
-			fh.Close()
-			fmt.Printf("(%3d,%3d) -> %s  %s\n", x, y, h, name)
+	// Report loudness per second so a silent tail is obvious.
+	per := s.SampleRate() * 2
+	fmt.Printf("%d notes, %.2fs audio\n", len(song.Notes), float64(len(samples)/2)/float64(s.SampleRate()))
+	for i := 0; i*per < len(samples); i++ {
+		w := samples[i*per:]
+		if len(w) > per {
+			w = w[:per]
 		}
+		var sum float64
+		for _, x := range w {
+			sum += float64(x) * float64(x)
+		}
+		fmt.Printf("  s%-2d rms=%.0f\n", i, math.Sqrt(sum/float64(len(w))))
 	}
-	fmt.Printf("\n%d distinct screens\n", len(seen))
 }
