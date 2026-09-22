@@ -77,8 +77,11 @@ func (s *Session) Draw(ops []mp.Op, opt DrawOptions) ([]int16, error) {
 			pending = 0
 			flush(x, y)
 		})
-		// Make sure the tail of each op is on screen before the next begins.
-		if len(op.Points) > 0 {
+		// When drawing slowly, show the tail of each operation before the
+		// next begins. Under heavy pacing that would cost a frame per
+		// operation, which a picture built from thousands of short strokes
+		// cannot afford, so the step budget takes over instead.
+		if stepsPerFrame == 1 && len(op.Points) > 0 {
 			last := op.Points[len(op.Points)-1]
 			flush(last.X, last.Y)
 		}
