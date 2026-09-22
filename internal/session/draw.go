@@ -22,6 +22,10 @@ type DrawOptions struct {
 	// HoldFrames are extra frames appended after the drawing finishes, so the
 	// result is on screen long enough to register.
 	HoldFrames int
+
+	// CaptureAudio collects the canvas background music over the same frames
+	// as the video, so the two need no resynchronising afterwards.
+	CaptureAudio bool
 }
 
 // Draw applies ops to the live canvas.
@@ -30,7 +34,7 @@ type DrawOptions struct {
 // progresses, with the game's own cursor dragged along the path. The game
 // keeps rendering normally throughout, so what gets captured is Mario Paint
 // drawing the picture, not a picture pasted into Mario Paint.
-func (s *Session) Draw(ops []mp.Op, opt DrawOptions) error {
+func (s *Session) Draw(ops []mp.Op, opt DrawOptions) ([]int16, error) {
 	canvas := s.Canvas()
 
 	stepsPerFrame := 1
@@ -47,6 +51,10 @@ func (s *Session) Draw(ops []mp.Op, opt DrawOptions) error {
 		if budget := int(fps * secs); budget > 0 && total > budget {
 			stepsPerFrame = (total + budget - 1) / budget
 		}
+	}
+
+	if opt.CaptureAudio {
+		s.core.StartAudioCapture()
 	}
 
 	pending := 0
@@ -83,7 +91,12 @@ func (s *Session) Draw(ops []mp.Op, opt DrawOptions) error {
 			err = opt.Video.Write(s.core.Frame())
 		}
 	}
-	return err
+
+	var samples []int16
+	if opt.CaptureAudio {
+		samples = s.core.StopAudioCapture()
+	}
+	return samples, err
 }
 
 // countSteps replays the ops on a throwaway copy just to count the ticks, so

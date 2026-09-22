@@ -92,3 +92,8 @@ func Duration(path string) float64 {
 	fmt.Sscanf(strings.TrimSpace(string(out)), "%f", &secs)
 	return secs
 }
+
+// Mux pairs a silent video with an audio file.
+func Mux(out, video, audio string) error {
+	return Join(out, []Part{{Video: video, Audio: audio}})
+}
