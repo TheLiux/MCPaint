@@ -16,18 +16,40 @@ type Part struct {
 	Seconds float64
 }
 
+// JoinOptions tunes how segments are stitched together.
+type JoinOptions struct {
+	// FadeSeconds dips each seam through black, picture and sound together.
+	// The console does the same thing between its own screens, so a cut that
+	// fades reads as the machine changing screens rather than as an edit.
+	FadeSeconds float64
+
+	// OpenCold fades up from black at the very start.
+	OpenCold bool
+
+	// EndCold fades down to black at the very end.
+	EndCold bool
+}
+
 // Join concatenates parts into a single file with a continuous audio track.
+func Join(out string, parts []Part) error {
+	return JoinWith(out, parts, JoinOptions{})
+}
+
+// JoinWith concatenates parts, optionally fading each seam through black.
 //
 // Segments are re-encoded rather than stream-copied: they come from different
 // runs and a copy would leave the timestamps discontinuous.
-func Join(out string, parts []Part) error {
+func JoinWith(out string, parts []Part, opt JoinOptions) error {
 	if len(parts) == 0 {
 		return fmt.Errorf("nothing to join")
 	}
 
 	args := []string{"-y", "-loglevel", "error"}
 
-	type stream struct{ v, a int }
+	type stream struct {
+		v, a int
+		dur  float64
+	}
 	var streams []stream
 	index := 0
 	for _, p := range parts {
@@ -53,13 +75,58 @@ func Join(out string, parts []Part) error {
 			a = index
 			index++
 		}
-		streams = append(streams, stream{v: v, a: a})
+
+		dur := p.Seconds
+		if dur <= 0 {
+			dur = Duration(p.Video)
+		}
+		streams = append(streams, stream{v: v, a: a, dur: dur})
+	}
+
+	// Build the per-segment chains first and the concat inputs separately:
+	// interleaving them would let ffmpeg read a concat label as an input to
+	// the next filter.
+	var (
+		defs   []string
+		labels strings.Builder
+	)
+	fade := opt.FadeSeconds
+	for i, s := range streams {
+		vIn, aIn := fmt.Sprintf("[%d:v]", s.v), fmt.Sprintf("[%d:a]", s.a)
+
+		fadeIn := fade > 0 && (i > 0 || opt.OpenCold)
+		fadeOut := fade > 0 && (i < len(streams)-1 || opt.EndCold)
+		if s.dur <= 2*fade {
+			fadeIn, fadeOut = false, false
+		}
+		if !fadeIn && !fadeOut {
+			fmt.Fprintf(&labels, "%s%s", vIn, aIn)
+			continue
+		}
+
+		var vf, af []string
+		if fadeIn {
+			vf = append(vf, fmt.Sprintf("fade=t=in:st=0:d=%.3f", fade))
+			af = append(af, fmt.Sprintf("afade=t=in:st=0:d=%.3f", fade))
+		}
+		if fadeOut {
+			st := s.dur - fade
+			vf = append(vf, fmt.Sprintf("fade=t=out:st=%.3f:d=%.3f", st, fade))
+			af = append(af, fmt.Sprintf("afade=t=out:st=%.3f:d=%.3f", st, fade))
+		}
+
+		defs = append(defs,
+			fmt.Sprintf("%s%s[v%d]", vIn, strings.Join(vf, ","), i),
+			fmt.Sprintf("%s%s[a%d]", aIn, strings.Join(af, ","), i))
+		fmt.Fprintf(&labels, "[v%d][a%d]", i, i)
 	}
 
 	var filter strings.Builder
-	for _, s := range streams {
-		fmt.Fprintf(&filter, "[%d:v][%d:a]", s.v, s.a)
+	for _, d := range defs {
+		filter.WriteString(d)
+		filter.WriteString(";")
 	}
+	filter.WriteString(labels.String())
 	fmt.Fprintf(&filter, "concat=n=%d:v=1:a=1[v][a]", len(streams))
 
 	args = append(args,

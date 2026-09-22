@@ -120,7 +120,11 @@ func (s *server) recordSession(_ context.Context, _ *mcp.CallToolRequest, in rec
 	}
 	parts = append(parts, capture.Part{Video: songVideo, Audio: songAudio})
 
-	if err := capture.Join(outPath, parts); err != nil {
+	if err := capture.JoinWith(outPath, parts, capture.JoinOptions{
+		FadeSeconds: 0.6,
+		OpenCold:    true,
+		EndCold:     true,
+	}); err != nil {
 		return nil, recordSessionOutput{}, err
 	}
 

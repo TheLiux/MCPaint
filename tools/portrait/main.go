@@ -24,9 +24,12 @@ func main() {
 		still  = flag.String("still", "out/portrait.png", "final canvas as a PNG")
 		fit    = flag.String("fit", "cover", "contain, cover or stretch")
 		dither = flag.Bool("dither", true, "Floyd-Steinberg dithering")
+		vivid  = flag.Bool("vivid", false, "match hue ahead of lightness; suits flat artwork")
+		rules  = flag.String("map", "", "pin source colours to palette entries, e.g. \"#4285F4=blue,#F4B400=yellow\"")
 		secs   = flag.Float64("seconds", 20, "target length of the drawing")
 		title  = flag.Float64("title", 3, "seconds of title screen before the drawing")
 		music  = flag.String("music", "theme-1", "canvas track")
+		fade   = flag.Float64("fade", 0.6, "seconds to dip through black at each seam")
 	)
 	flag.Parse()
 
@@ -51,7 +54,13 @@ func main() {
 
 	// Quantize first, then work out the strokes that would produce it.
 	target := mp.NewCanvas()
-	target.DrawImage(src, mp.FitMode(*fit), *dither)
+	list, err := mp.ParseColorRules(*rules)
+	if err != nil {
+		log.Fatal(err)
+	}
+	target.DrawImageWith(src, mp.FitMode(*fit), mp.QuantizeOptions{
+		Dither: *dither, Vivid: *vivid, Rules: list,
+	})
 	ops := mp.CanvasToOps(target)
 	fmt.Printf("%d strokes to draw\n", len(ops))
 
@@ -127,7 +136,13 @@ func main() {
 	}
 	parts = append(parts, capture.Part{Video: drawPath, Audio: drawWav})
 
-	if err := capture.Join(*out, parts); err != nil {
+	// The console fades through black between its own screens, so the seams
+	// do the same rather than cutting.
+	if err := capture.JoinWith(*out, parts, capture.JoinOptions{
+		FadeSeconds: *fade,
+		OpenCold:    true,
+		EndCold:     true,
+	}); err != nil {
 		log.Fatal(err)
 	}
 
