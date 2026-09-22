@@ -80,7 +80,9 @@ func main() {
 				"points": []any{map[string]int{"x": 40, "y": 30}, map[string]int{"x": 90, "y": 26}}},
 		},
 		"videoPath": "out/mcp_draw.mp4",
+		"wavPath":   "out/mcp_draw.wav",
 		"outPath":   "out/mcp_draw.png",
+		"music":     "theme-1",
 		"seconds":   4,
 	})
 

@@ -11,6 +11,7 @@ import (
 	"image/png"
 	"log"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/TheLiux/MCPaint/internal/capture"
@@ -30,10 +31,13 @@ func main() {
 		ops    = flag.String("ops", "", "JSON file of drawing operations")
 		video  = flag.String("video", "", "record the drawing to this MP4")
 		secs   = flag.Float64("seconds", 8, "target video length")
-		fps    = flag.Float64("fps", 30, "video frame rate")
+		fps    = flag.Float64("fps", 0, "video frame rate; 0 uses the console's own, which keeps audio in sync")
 		scale  = flag.Int("scale", 3, "video upscale factor")
+		music  = flag.String("music", "theme-1", "canvas track: theme-1, theme-2, your-song or off")
 	)
 	flag.Parse()
+
+	var drawAudio []int16
 
 	start := time.Now()
 	s, err := session.Open(session.Config{CorePath: *core, ROMPath: *rom})
@@ -42,10 +46,19 @@ func main() {
 	}
 	defer s.Close()
 
-	if err := s.BootToCanvas(); err != nil {
+	if *fps <= 0 {
+		*fps = s.FPS()
+	}
+
+	track, err := session.ParseBGM(*music)
+	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("canvas ready in %s\n", time.Since(start).Round(time.Millisecond))
+	if err := s.PrepareCanvas(track); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("canvas ready in %s, music %q at its first note\n",
+		time.Since(start).Round(time.Millisecond), *music)
 
 	if *in != "" {
 		f, err := os.Open(*in)
@@ -75,6 +88,7 @@ func main() {
 		}
 
 		opt := session.DrawOptions{TargetSeconds: *secs, FPS: *fps, HoldFrames: int(*fps * 1.5)}
+		opt.CaptureAudio = *video != ""
 		if *video != "" {
 			f := s.Frame()
 			v, err := capture.NewVideo(*video, f.Rect.Dx(), f.Rect.Dy(), *fps, *scale)
@@ -86,12 +100,25 @@ func main() {
 				if err := v.Close(); err != nil {
 					log.Fatal(err)
 				}
-				fmt.Printf("wrote %s\n", *video)
+				silent := filepath.Join(os.TempDir(), "mp-draw-silent.mp4")
+				wav := filepath.Join(os.TempDir(), "mp-draw.wav")
+				os.Rename(*video, silent)
+				if err := capture.WriteWAV(wav, drawAudio, s.SampleRate()); err != nil {
+					log.Fatal(err)
+				}
+				if err := capture.Mux(*video, silent, wav); err != nil {
+					log.Fatal(err)
+				}
+				os.Remove(silent)
+				os.Remove(wav)
+				fmt.Printf("wrote %s (with sound)\n", *video)
 			}()
 		}
-		if err := s.Draw(list, opt); err != nil {
+		samples, err := s.Draw(list, opt)
+		if err != nil {
 			log.Fatal(err)
 		}
+		drawAudio = samples
 		fmt.Printf("drew %d operations\n", len(list))
 	}
 
