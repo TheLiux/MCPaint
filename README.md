@@ -12,9 +12,12 @@ game renders it exactly as if it had been drawn by hand.
 
 Drawing is played back step by step with the in-game cursor following the
 stroke, so a recording shows Mario Paint *drawing the picture* rather than a
-picture pasted into Mario Paint. Music is the SPC700's own output, captured
-from the same run that produced the frames, so picture and sound need no
-resynchronising.
+picture pasted into Mario Paint. It comes with sound: the canvas background
+track plays over the timelapse, and a recording opens on the tune's first
+note.
+
+All audio is the SPC700's own output, captured from the same run that produced
+the frames, so picture and sound need no resynchronising.
 
 ## Requirements
 
@@ -55,12 +58,26 @@ Register it with an MCP client:
 |---|---|
 | `reference` | The palette, instruments, note range and hard limits |
 | `draw_image` | Redraw an existing image, quantized to 16 colours |
-| `draw` | Draw with the game's own tools, optionally recording a timelapse |
+| `draw` | Draw with the game's own tools, optionally recording a timelapse with sound |
 | `screenshot` | Capture the canvas or the whole screen |
 | `compose` | Write notes into the music composer |
 | `import_midi` | Load a MIDI file, with a report of what had to give |
 | `play` | Play the song and record audio, optionally with video |
 | `record_session` | One clip: the picture being drawn, then the song playing |
+
+## Canvas music
+
+The canvas has its own background track, and `draw` and `record_session` take a
+`music` option: `theme-1` (default), `theme-2`, `your-song` — whatever is
+currently in the composer — or `off`.
+
+A recording always starts on the tune's first note. Getting there is fiddlier
+than it looks: re-picking a track does not rewind it, because the sequencer
+keeps running underneath. Switching to silence stops it and switching back
+starts the tune again, about 36 frames later, while leaving the SELECT MUSIC
+screen takes roughly 32 — so the canvas is up just before the music begins.
+The prepared state is then nudged forward to the last silent frame, past the
+screen-transition sound effect, and cached.
 
 ## What the game allows
 
@@ -77,8 +94,8 @@ The limits are tight and shape everything:
 # Draw an image onto the canvas and screenshot it
 go run ./cmd/mcpaint-cli -image picture.png -out out/canvas.png
 
-# Play a set of drawing operations and record the timelapse
-go run ./cmd/mcpaint-cli -ops testdata/scene.json -video out/scene.mp4 -full
+# Play a set of drawing operations and record the timelapse, with music
+go run ./cmd/mcpaint-cli -ops testdata/scene.json -video out/scene.mp4 -full -music theme-1
 
 # Drive the MCP server end to end
 go build -o build/mcpaint ./cmd/mcpaint && go run ./tools/mcptest
@@ -98,6 +115,8 @@ Two things that look like they should work but do not:
   after the first note.
 - Pressing PLAY twice in a row plays nothing the second time. The playhead
   stays at the end of the previous run, so STOP has to rewind it first.
+- Video has to be encoded at the console's own frame rate, 60.0988, not a
+  round 30 or 60. Anything else and the picture drifts away from the sound.
 
 Memory addresses come from the labelled RAM map in
 [Yoshifanatic1/Mario-Paint-Disassembly](https://github.com/Yoshifanatic1/Mario-Paint-Disassembly)
