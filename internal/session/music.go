@@ -178,3 +178,87 @@ func (s *Session) quickClick(x, y int) {
 	}
 	s.core.SetMouse(retro.MouseState{})
 }
+
+// songSpan measures when the current song actually makes a sound: the first
+// frame with audio and the last, counted from pressing PLAY.
+//
+// The game gives no "finished" signal, so the end is found by listening. The
+// measurement runs on a throwaway pass and puts the session back where it was,
+// so the caller can then record exactly the frames that matter.
+func (s *Session) songSpan(maxFrames int) (first, last int, err error) {
+	if maxFrames <= 0 {
+		maxFrames = int(120 * s.FPS())
+	}
+	quietLimit := int(0.6 * s.FPS())
+
+	mark, err := s.core.Serialize()
+	if err != nil {
+		return 0, 0, err
+	}
+
+	s.Click(ComposerStopX, ComposerStopY)
+	s.Click(ComposerPlayX, ComposerPlayY)
+
+	first, last, quiet := -1, -1, 0
+	for f := 0; f < maxFrames; f++ {
+		s.core.StartAudioCapture()
+		s.core.Run()
+		loud := false
+		for _, v := range s.core.StopAudioCapture() {
+			if v > 200 || v < -200 {
+				loud = true
+				break
+			}
+		}
+		if loud {
+			if first < 0 {
+				first = f
+			}
+			last, quiet = f, 0
+			continue
+		}
+		quiet++
+		// Silence before the first note is the song starting, not ending.
+		if first >= 0 && quiet >= quietLimit {
+			break
+		}
+	}
+
+	if err := s.core.Unserialize(mark); err != nil {
+		return 0, 0, err
+	}
+	return first, last, nil
+}
+
+// PlayMeasured plays the current song and records only the part that sounds.
+//
+// The lead-in before the first note is played but not recorded, and the tail
+// is cut shortly after the last one. That is what lets consecutive pages of a
+// long piece be stitched together without a hole at every seam.
+func (s *Session) PlayMeasured(opt PlayOptions) ([]int16, error) {
+	first, last, err := s.songSpan(opt.Frames)
+	if err != nil {
+		return nil, err
+	}
+	if first < 0 {
+		return nil, nil
+	}
+	tail := int(0.2 * s.FPS())
+
+	s.Click(ComposerStopX, ComposerStopY)
+	s.Click(ComposerPlayX, ComposerPlayY)
+
+	// Run the lead-in without recording it.
+	s.core.RunFrames(first)
+
+	s.core.StartAudioCapture()
+	for f := first; f <= last+tail; f++ {
+		s.core.Run()
+		if opt.Video != nil && err == nil {
+			err = opt.Video.Write(s.core.Frame())
+		}
+	}
+	samples := s.core.StopAudioCapture()
+	s.Click(ComposerStopX, ComposerStopY)
+	return samples, err
+}
