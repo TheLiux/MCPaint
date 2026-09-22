@@ -63,7 +63,8 @@ func main() {
 		Name: "draw",
 		Description: "Draw with Mario Paint's own tools -- pencil, line, rect, " +
 			"ellipse, fill and spray can. Set videoPath to record a timelapse of " +
-			"the picture appearing, with the in-game cursor following the strokes.",
+			"the picture appearing, with the in-game cursor following the strokes " +
+			"and the canvas music on the soundtrack, starting from its first note.",
 	}, srv.draw)
 
 	mcp.AddTool(s, &mcp.Tool{

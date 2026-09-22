@@ -7,6 +7,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -143,24 +144,45 @@ func (s *server) drawImage(_ context.Context, _ *mcp.CallToolRequest, in drawIma
 type drawInput struct {
 	Operations []opInput `json:"operations" jsonschema:"drawing operations, applied in order"`
 	Clear      bool      `json:"clear,omitempty" jsonschema:"wipe the canvas before drawing"`
-	VideoPath  string    `json:"videoPath,omitempty" jsonschema:"set this to record a timelapse of the drawing appearing"`
+	VideoPath  string    `json:"videoPath,omitempty" jsonschema:"set this to record a timelapse of the drawing appearing, with the canvas music on the soundtrack"`
 	Seconds    float64   `json:"seconds,omitempty" jsonschema:"target timelapse length, default 8"`
+	Music      string    `json:"music,omitempty" jsonschema:"canvas track for the recording: theme-1 (default), theme-2, your-song or off; a recording always opens on the tune's first note"`
 	OutPath    string    `json:"outPath,omitempty" jsonschema:"where to write the resulting PNG"`
+	WavPath    string    `json:"wavPath,omitempty" jsonschema:"also write the recorded music on its own"`
 }
 
 type drawOutput struct {
 	imageResult
-	VideoPath string `json:"videoPath,omitempty"`
+	VideoPath string  `json:"videoPath,omitempty"`
+	WavPath   string  `json:"wavPath,omitempty"`
+	Seconds   float64 `json:"seconds,omitempty"`
 }
 
 func (s *server) draw(_ context.Context, _ *mcp.CallToolRequest, in drawInput) (*mcp.CallToolResult, drawOutput, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	sess, err := s.canvas()
+	if err := s.setTrack(in.Music); err != nil {
+		return nil, drawOutput{}, err
+	}
+
+	recording := in.VideoPath != "" || in.WavPath != ""
+
+	// A recording has to start on the downbeat, so the canvas is re-prepared
+	// even when the session is already sitting on it.
+	var (
+		sess *session.Session
+		err  error
+	)
+	if recording {
+		sess, err = s.freshCanvas()
+	} else {
+		sess, err = s.canvas()
+	}
 	if err != nil {
 		return nil, drawOutput{}, err
 	}
+
 	ops, err := parseOps(in.Operations)
 	if err != nil {
 		return nil, drawOutput{}, err
@@ -170,25 +192,67 @@ func (s *server) draw(_ context.Context, _ *mcp.CallToolRequest, in drawInput) (
 		sess.RunFrames(4)
 	}
 
-	opt := session.DrawOptions{TargetSeconds: in.Seconds, FPS: sess.FPS()}
-	var videoPath string
+	opt := session.DrawOptions{
+		TargetSeconds: in.Seconds,
+		FPS:           sess.FPS(),
+		CaptureAudio:  recording,
+	}
+
+	var silentVideo string
 	if in.VideoPath != "" {
-		videoPath, err = s.outPath(in.VideoPath, "drawing", ".mp4")
-		if err != nil {
-			return nil, drawOutput{}, err
-		}
 		f := sess.Frame()
-		v, err := capture.NewVideo(videoPath, f.Rect.Dx(), f.Rect.Dy(), sess.FPS(), 3)
+		silentVideo = filepath.Join(os.TempDir(), fmt.Sprintf("mp-draw-%d.mp4", os.Getpid()))
+		v, err := capture.NewVideo(silentVideo, f.Rect.Dx(), f.Rect.Dy(), sess.FPS(), 3)
 		if err != nil {
 			return nil, drawOutput{}, err
 		}
 		opt.Video = v
 		opt.HoldFrames = int(sess.FPS() * 1.5)
-		defer v.Close()
 	}
 
-	if err := sess.Draw(ops, opt); err != nil {
-		return nil, drawOutput{}, err
+	samples, derr := sess.Draw(ops, opt)
+	if opt.Video != nil {
+		if cerr := opt.Video.Close(); derr == nil {
+			derr = cerr
+		}
+	}
+	if derr != nil {
+		return nil, drawOutput{}, derr
+	}
+
+	out := drawOutput{imageResult: imageResult{
+		Path: "", Width: mp.VisibleW, Height: mp.VisibleH,
+	}}
+
+	if recording {
+		wavPath := in.WavPath
+		keepWav := wavPath != ""
+		if wavPath == "" {
+			wavPath = filepath.Join(os.TempDir(), fmt.Sprintf("mp-draw-%d.wav", os.Getpid()))
+		} else if wavPath, err = s.outPath(wavPath, "drawing", ".wav"); err != nil {
+			return nil, drawOutput{}, err
+		}
+		if err := capture.WriteWAV(wavPath, samples, sess.SampleRate()); err != nil {
+			return nil, drawOutput{}, err
+		}
+		if keepWav {
+			out.WavPath = wavPath
+		} else {
+			defer os.Remove(wavPath)
+		}
+
+		if in.VideoPath != "" {
+			videoPath, err := s.outPath(in.VideoPath, "drawing", ".mp4")
+			if err != nil {
+				return nil, drawOutput{}, err
+			}
+			if err := capture.Mux(videoPath, silentVideo, wavPath); err != nil {
+				return nil, drawOutput{}, err
+			}
+			os.Remove(silentVideo)
+			out.VideoPath = videoPath
+			out.Seconds = capture.Duration(videoPath)
+		}
 	}
 
 	path, err := s.outPath(in.OutPath, "canvas", ".png")
@@ -199,11 +263,8 @@ func (s *server) draw(_ context.Context, _ *mcp.CallToolRequest, in drawInput) (
 	if err := writePNG(path, img); err != nil {
 		return nil, drawOutput{}, err
 	}
+	out.Path = path
 
-	out := drawOutput{
-		imageResult: imageResult{Path: path, Width: mp.VisibleW, Height: mp.VisibleH},
-		VideoPath:   videoPath,
-	}
 	res, _, err := withImage(img, out.imageResult)
 	return res, out, err
 }

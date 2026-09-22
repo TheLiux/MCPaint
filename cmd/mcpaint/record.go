@@ -17,6 +17,7 @@ type recordSessionInput struct {
 	DrawSeconds float64   `json:"drawSeconds,omitempty" jsonschema:"target length of the drawing segment, default 8"`
 	SongSeconds float64   `json:"songSeconds,omitempty" jsonschema:"length of the playback segment, default 10"`
 	OutPath     string    `json:"outPath,omitempty" jsonschema:"where to write the MP4"`
+	Music       string    `json:"music,omitempty" jsonschema:"canvas track for the drawing half: theme-1 (default), theme-2, your-song or off"`
 }
 
 type recordSessionOutput struct {
@@ -32,6 +33,10 @@ func (s *server) recordSession(_ context.Context, _ *mcp.CallToolRequest, in rec
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if err := s.setTrack(in.Music); err != nil {
+		return nil, recordSessionOutput{}, err
+	}
+
 	outPath, err := s.outPath(in.OutPath, "session", ".mp4")
 	if err != nil {
 		return nil, recordSessionOutput{}, err
@@ -45,7 +50,7 @@ func (s *server) recordSession(_ context.Context, _ *mcp.CallToolRequest, in rec
 	var parts []capture.Part
 
 	if len(in.Operations) > 0 {
-		sess, err := s.canvas()
+		sess, err := s.freshCanvas()
 		if err != nil {
 			return nil, recordSessionOutput{}, err
 		}
@@ -64,11 +69,12 @@ func (s *server) recordSession(_ context.Context, _ *mcp.CallToolRequest, in rec
 		if err != nil {
 			return nil, recordSessionOutput{}, err
 		}
-		err = sess.Draw(ops, session.DrawOptions{
+		samples, err := sess.Draw(ops, session.DrawOptions{
 			TargetSeconds: in.DrawSeconds,
 			FPS:           sess.FPS(),
 			Video:         v,
 			HoldFrames:    int(sess.FPS() * 1.5),
+			CaptureAudio:  true,
 		})
 		if cerr := v.Close(); err == nil {
 			err = cerr
@@ -76,7 +82,14 @@ func (s *server) recordSession(_ context.Context, _ *mcp.CallToolRequest, in rec
 		if err != nil {
 			return nil, recordSessionOutput{}, err
 		}
-		parts = append(parts, capture.Part{Video: drawPath, Seconds: capture.Duration(drawPath)})
+
+		// The canvas music plays while the picture is drawn, so the first
+		// segment carries its own soundtrack rather than silence.
+		drawAudio := filepath.Join(tmp, "draw.wav")
+		if err := capture.WriteWAV(drawAudio, samples, sess.SampleRate()); err != nil {
+			return nil, recordSessionOutput{}, err
+		}
+		parts = append(parts, capture.Part{Video: drawPath, Audio: drawAudio})
 	}
 
 	sess, err := s.composer()
