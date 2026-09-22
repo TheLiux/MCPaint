@@ -1,8 +1,10 @@
 package mp
 
 import (
+	"fmt"
 	"image/color"
 	"math"
+	"strings"
 )
 
 // Palette is Mario Paint's 16-colour canvas palette, decoded from the BGR555
@@ -57,4 +59,48 @@ func Nearest(r, g, b uint8) byte {
 		}
 	}
 	return best
+}
+
+// colourNames label the palette in index order, for callers that would rather
+// say "red" than 1.
+var colourNames = [16]string{
+	"background", "red", "orange", "yellow", "green", "dark-green",
+	"cyan", "blue", "brown", "olive", "peach", "magenta",
+	"white", "black", "grey", "light-grey",
+}
+
+// ColorName returns the name of a palette index.
+func ColorName(i byte) string {
+	if int(i) >= len(colourNames) {
+		return ""
+	}
+	return colourNames[i]
+}
+
+// Colors lists the palette names in index order.
+func Colors() []string { return colourNames[:] }
+
+// ParseColor accepts a colour name, a palette index 0..15, or a #RRGGBB
+// value, which is matched to the nearest palette entry.
+func ParseColor(s string) (byte, error) {
+	t := strings.ToLower(strings.TrimSpace(s))
+	if t == "" {
+		return 0, fmt.Errorf("no colour given")
+	}
+	for i, name := range colourNames {
+		if name == t {
+			return byte(i), nil
+		}
+	}
+	if strings.HasPrefix(t, "#") && len(t) == 7 {
+		var r, g, b uint8
+		if _, err := fmt.Sscanf(t, "#%02x%02x%02x", &r, &g, &b); err == nil {
+			return Nearest(r, g, b), nil
+		}
+	}
+	var n int
+	if _, err := fmt.Sscanf(t, "%d", &n); err == nil && n >= 0 && n < len(colourNames) {
+		return byte(n), nil
+	}
+	return 0, fmt.Errorf("unknown colour %q (want a name, 0..15, or #RRGGBB)", s)
 }
