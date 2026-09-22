@@ -1,0 +1,12 @@
+# Mai committare ROM o materiale coperto da copyright
+*.smc
+*.sfc
+*.srm
+*.state
+
+# Output e build
+/build/
+/out/
+*.png
+*.wav
+*.mp4
