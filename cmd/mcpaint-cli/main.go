@@ -27,6 +27,8 @@ func main() {
 		out    = flag.String("out", "out/canvas.png", "screenshot destination")
 		fit    = flag.String("fit", "contain", "contain | cover | stretch")
 		dither = flag.Bool("dither", true, "Floyd-Steinberg dithering")
+		vivid  = flag.Bool("vivid", false, "match hue ahead of lightness; suits flat artwork")
+		rules  = flag.String("map", "", "pin source colours to palette entries, e.g. \"#4285F4=blue,#F4B400=yellow\"")
 		full   = flag.Bool("full", false, "capture the whole screen, not just the canvas")
 		ops    = flag.String("ops", "", "JSON file of drawing operations")
 		video  = flag.String("video", "", "record the drawing to this MP4")
@@ -72,7 +74,13 @@ func main() {
 		}
 
 		c := mp.NewCanvas()
-		c.DrawImage(src, mp.FitMode(*fit), *dither)
+		list, err := mp.ParseColorRules(*rules)
+		if err != nil {
+			log.Fatal(err)
+		}
+		c.DrawImageWith(src, mp.FitMode(*fit), mp.QuantizeOptions{
+			Dither: *dither, Vivid: *vivid, Rules: list,
+		})
 		s.SetCanvas(c)
 		s.RunFrames(8)
 	}
