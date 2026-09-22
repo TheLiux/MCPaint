@@ -50,33 +50,56 @@ func (s *server) open() (*session.Session, error) {
 	return sess, nil
 }
 
-func (s *server) canvas() (*session.Session, error) {
+// switchTo moves the session to another screen, carrying the work with it.
+//
+// Screen changes are done by restoring a cached save state, which would
+// otherwise roll the canvas and the song back to whatever they were when the
+// cache was made. So the content is read out of WRAM first and written back
+// afterwards.
+func (s *server) switchTo(target screen) (*session.Session, error) {
 	sess, err := s.open()
 	if err != nil {
 		return nil, err
 	}
-	if s.current != screenCanvas {
-		if err := sess.BootToCanvas(); err != nil {
-			return nil, err
-		}
-		s.current = screenCanvas
+	if s.current == target {
+		return sess, nil
 	}
+
+	var (
+		canvas *mp.Canvas
+		song   *mp.Song
+	)
+	if s.current != screenNone {
+		canvas = sess.Canvas()
+		song = sess.ReadSong()
+	}
+
+	switch target {
+	case screenCanvas:
+		err = sess.BootToCanvas()
+	case screenComposer:
+		err = sess.OpenComposer()
+	default:
+		return nil, fmt.Errorf("unknown screen %d", target)
+	}
+	if err != nil {
+		return nil, err
+	}
+	s.current = target
+
+	if canvas != nil {
+		sess.SetCanvas(canvas)
+	}
+	if song != nil {
+		sess.SetSong(song)
+	}
+	sess.RunFrames(4)
 	return sess, nil
 }
 
-func (s *server) composer() (*session.Session, error) {
-	sess, err := s.open()
-	if err != nil {
-		return nil, err
-	}
-	if s.current != screenComposer {
-		if err := sess.OpenComposer(); err != nil {
-			return nil, err
-		}
-		s.current = screenComposer
-	}
-	return sess, nil
-}
+func (s *server) canvas() (*session.Session, error) { return s.switchTo(screenCanvas) }
+
+func (s *server) composer() (*session.Session, error) { return s.switchTo(screenComposer) }
 
 func (s *server) close() {
 	if s.sess != nil {
@@ -101,6 +124,9 @@ func (s *server) outPath(given, prefix, ext string) (string, error) {
 	name := fmt.Sprintf("%s-%s%s", prefix, time.Now().Format("20060102-150405.000"), ext)
 	return filepath.Join(s.outDir, name), nil
 }
+
+// newBlankCanvas is a fresh, empty Mario Paint canvas.
+func newBlankCanvas() *mp.Canvas { return mp.NewCanvas() }
 
 func writePNG(path string, img image.Image) error {
 	f, err := os.Create(path)
