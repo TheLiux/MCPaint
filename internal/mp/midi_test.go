@@ -97,3 +97,73 @@ func TestFitPitchSnapsAndTransposes(t *testing.T) {
 		}
 	}
 }
+
+func TestImportMIDIPagesSplitsALongPiece(t *testing.T) {
+	path := writeLongMIDI(t)
+
+	// One page has to drop everything past the 96th column.
+	one, repOne, err := ImportMIDIPages(path, MIDIOptions{StepsPerQuarter: 2}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(one) != 1 {
+		t.Fatalf("asked for one page, got %d", len(one))
+	}
+	if repOne.DroppedLength == 0 {
+		t.Error("a piece longer than a staff should have lost notes off the end")
+	}
+
+	// Uncapped, it should spread across pages and keep them.
+	all, rep, err := ImportMIDIPages(path, MIDIOptions{StepsPerQuarter: 2}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) < 2 {
+		t.Fatalf("expected more than one page, got %d", len(all))
+	}
+	if rep.Pages != len(all) {
+		t.Errorf("report says %d pages, got %d songs", rep.Pages, len(all))
+	}
+	if rep.DroppedLength != 0 {
+		t.Errorf("%d notes fell off the end with no page limit", rep.DroppedLength)
+	}
+	if rep.NotesPlaced <= repOne.NotesPlaced {
+		t.Errorf("paging placed %d notes, no better than one page's %d",
+			rep.NotesPlaced, repOne.NotesPlaced)
+	}
+
+	for i, s := range all {
+		for _, n := range s.Notes {
+			if n.Column < 0 || n.Column >= SongColumns {
+				t.Errorf("page %d holds a note at column %d", i, n.Column)
+			}
+		}
+	}
+}
+
+// writeLongMIDI builds a piece that needs more than one staff.
+func writeLongMIDI(t *testing.T) string {
+	t.Helper()
+
+	var s smf.SMF
+	s.TimeFormat = smf.MetricTicks(480)
+	var tr smf.Track
+	for i := 0; i < 140; i++ { // 140 quarters at two columns each
+		key := uint8(60 + i%8)
+		tr.Add(0, midi.NoteOn(0, key, 100))
+		tr.Add(480, midi.NoteOff(0, key))
+	}
+	tr.Close(0)
+	s.Add(tr)
+
+	path := filepath.Join(t.TempDir(), "long.mid")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.WriteTo(f); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	return path
+}
