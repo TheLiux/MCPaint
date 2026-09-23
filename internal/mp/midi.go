@@ -18,6 +18,8 @@ type ImportReport struct {
 	Pages         int      `json:"pages" jsonschema:"staves the piece needed, 96 columns each"`
 	NotesRead     int      `json:"notesRead"`
 	NotesPlaced   int      `json:"notesPlaced"`
+	Doubled       int      `json:"doubled" jsonschema:"octave doublings that collapsed onto a note already in the column"`
+	Spread        int      `json:"spread" jsonschema:"notes moved to the next column because the chord was too thick for three voices"`
 	Transposed    int      `json:"transposed" jsonschema:"notes moved by whole octaves to reach the staff"`
 	Snapped       int      `json:"snapped" jsonschema:"sharps and flats pulled to the nearest staff position"`
 	DroppedVoices int      `json:"droppedVoices" jsonschema:"notes lost because a column already held three"`
@@ -42,27 +44,79 @@ type MIDIOptions struct {
 // fitPitch maps a MIDI note number onto a staff position, moving it by whole
 // octaves first and only then snapping an accidental to its neighbour.
 func fitPitch(note int) (pitch byte, transposed, snapped bool) {
+	return fitPitchNear(note, 0)
+}
+
+// fitPitchNear is fitPitch with a preference for staying near where the part
+// already is.
+//
+// Folding each note independently lets a part land in whichever octave the
+// arithmetic happens to reach, so a rising line can jump down an octave
+// mid-phrase and a bass can end up on top of the melody. Choosing the octave
+// closest to the previous note of the same part keeps the shape of the line.
+// Pass 0 for near when the part has not started yet.
+func fitPitchNear(note int, near byte) (pitch byte, transposed, snapped bool) {
 	lo, hi := staffMIDI[MinPitch], staffMIDI[MaxPitch]
-	for note < lo {
-		note += 12
-		transposed = true
+
+	// Every octave of this note that the staff can hold.
+	var candidates []int
+	for n := note; n >= lo-11; n -= 12 {
+		if n <= hi+11 {
+			candidates = append(candidates, n)
+		}
 	}
-	for note > hi {
-		note -= 12
-		transposed = true
+	for n := note + 12; n <= hi+11; n += 12 {
+		candidates = append(candidates, n)
 	}
 
-	best, bestDist := byte(MinPitch), 128
-	for p := MinPitch; p <= MaxPitch; p++ {
-		d := note - staffMIDI[p]
-		if d < 0 {
-			d = -d
+	best, bestScore, bestSnap, bestShift := byte(0), 1<<30, false, 0
+	for _, n := range candidates {
+		clamped := n
+		for clamped < lo {
+			clamped += 12
 		}
-		if d < bestDist {
-			best, bestDist = byte(p), d
+		for clamped > hi {
+			clamped -= 12
+		}
+
+		p, dist := byte(MinPitch), 128
+		for i := MinPitch; i <= MaxPitch; i++ {
+			d := clamped - staffMIDI[i]
+			if d < 0 {
+				d = -d
+			}
+			if d < dist {
+				p, dist = byte(i), d
+			}
+		}
+
+		// With somewhere to be near, follow the line. Without -- the first
+		// note of a part -- move as few octaves as possible, so a note that
+		// already fits stays exactly where it was written.
+		shift := (clamped - note) / 12
+
+		var score int
+		if near == 0 {
+			moved := shift
+			if moved < 0 {
+				moved = -moved
+			}
+			score = moved*100 + dist
+		} else {
+			d := int(p) - int(near)
+			if d < 0 {
+				d = -d
+			}
+			score = d*2 + dist
+		}
+		if best == 0 || score < bestScore {
+			best, bestScore, bestSnap, bestShift = p, score, dist != 0, shift
 		}
 	}
-	return best, transposed, bestDist != 0
+
+	// Transposed means moved by whole octaves. A note pulled to its neighbour
+	// because the staff has no accidentals was snapped, not transposed.
+	return best, bestShift != 0, bestSnap
 }
 
 // midiEvent is one note start, already placed on the column grid.
@@ -181,23 +235,100 @@ func ImportMIDIPages(path string, opt MIDIOptions, maxPages int) ([]*Song, *Impo
 	rep := &ImportReport{NotesRead: len(events), Pages: pages}
 	instrumentFor := instrumentPicker(opt)
 
+	// Fold every note onto the staff first, keeping each part near itself.
+	type placed struct {
+		column int
+		pitch  byte
+		instr  byte
+	}
+	lastOf := map[int]byte{}
+	byColumn := map[int][]placed{}
+
 	for _, e := range events {
-		page := e.column / SongColumns
-		if page >= pages {
-			rep.DroppedLength++
-			continue
-		}
-		pitch, transposed, snapped := fitPitch(e.note)
+		pitch, transposed, snapped := fitPitchNear(e.note, lastOf[e.channel])
 		if transposed {
 			rep.Transposed++
 		}
 		if snapped {
 			rep.Snapped++
 		}
-		if songs[page].Add(e.column%SongColumns, pitch, instrumentFor(e.channel)) {
-			rep.NotesPlaced++
-		} else {
-			rep.DroppedVoices++
+		lastOf[e.channel] = pitch
+
+		if e.column/SongColumns >= pages {
+			rep.DroppedLength++
+			continue
+		}
+		byColumn[e.column] = append(byColumn[e.column],
+			placed{e.column, pitch, instrumentFor(e.channel)})
+	}
+
+	columns := make([]int, 0, len(byColumn))
+	for col := range byColumn {
+		columns = append(columns, col)
+	}
+	sort.Ints(columns)
+
+	for _, col := range columns {
+		notes := byColumn[col]
+
+		// Octave doublings collapse onto the same position once the staff has
+		// folded them, so a chord can arrive holding the same note three
+		// times. Dropping the repeats is free: they would have sounded as a
+		// unison while using up the voices a real chord tone needed.
+		seen := map[byte]bool{}
+		unique := notes[:0]
+		for _, n := range notes {
+			if seen[n.pitch] {
+				rep.Doubled++
+				continue
+			}
+			seen[n.pitch] = true
+			unique = append(unique, n)
+		}
+		notes = unique
+
+		// Still too many: keep the bass and the melody, which carry the
+		// harmony's outline, and fill the last voice from the middle where
+		// the chord's character lives.
+		var spill []placed
+		if len(notes) > SongChannels {
+			sort.Slice(notes, func(i, j int) bool { return notes[i].pitch < notes[j].pitch })
+			bass, melody := notes[0], notes[len(notes)-1]
+			middle := notes[len(notes)/2]
+			for i, n := range notes {
+				if i == 0 || i == len(notes)-1 || i == len(notes)/2 {
+					continue
+				}
+				spill = append(spill, n)
+			}
+			notes = []placed{bass, middle, melody}
+		}
+
+		for _, n := range notes {
+			page, within := n.column/SongColumns, n.column%SongColumns
+			if songs[page].Add(within, n.pitch, n.instr) {
+				rep.NotesPlaced++
+			} else {
+				rep.DroppedVoices++
+			}
+		}
+
+		// What would not fit goes to the next column, which turns a chord too
+		// thick for three voices into a quick spread of it. That is what a
+		// player would do by hand, and it beats losing the note.
+		for _, n := range spill {
+			next := n.column + 1
+			if next/SongColumns != n.column/SongColumns || next >= len(songs)*SongColumns {
+				rep.DroppedVoices++
+				continue
+			}
+			page, within := next/SongColumns, next%SongColumns
+			if songs[page].Add(within, n.pitch, n.instr) {
+				rep.Spread++
+				rep.NotesPlaced++
+			} else {
+				rep.DroppedVoices++
+			}
 		}
 	}
 
@@ -205,6 +336,15 @@ func ImportMIDIPages(path string, opt MIDIOptions, maxPages int) ([]*Song, *Impo
 		rep.Warnings = append(rep.Warnings, fmt.Sprintf(
 			"%d notes fell past page %d; raise the page limit or lower stepsPerQuarter",
 			rep.DroppedLength, pages))
+	}
+	if rep.Doubled > 0 {
+		rep.Warnings = append(rep.Warnings, fmt.Sprintf(
+			"%d octave doublings collapsed onto notes already in their column", rep.Doubled))
+	}
+	if rep.Spread > 0 {
+		rep.Warnings = append(rep.Warnings, fmt.Sprintf(
+			"%d notes were spread onto the next column, the chord being too thick for %d voices",
+			rep.Spread, SongChannels))
 	}
 	if rep.DroppedVoices > 0 {
 		rep.Warnings = append(rep.Warnings, fmt.Sprintf(

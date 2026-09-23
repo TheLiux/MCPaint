@@ -148,6 +148,29 @@ tune in another key has every accidental pulled to a neighbour; shifting the
 whole piece can put it in a key the staff actually has. On a Sicilian folk tune
 it took the accidentals from 86 down to 19.
 
+### What the staff cannot hold, and what is done about it
+
+Three limits bite, and each has a different answer.
+
+**Range.** Thirteen diatonic positions, B3 to G5, is under two octaves, so a
+piece spanning more has to fold. Folding each note on its own lets a part land
+wherever the arithmetic reaches, so a rising line jumps down mid-phrase and a
+bass ends up above the melody. Each note is instead put in the octave nearest
+to where its own part already is, which keeps the shape of the line.
+
+**Three voices per column.** Most of what looks like a shortage is not one:
+arrangements double notes at the octave, and once the staff has folded them
+they collapse onto the same position. Playing that twice wastes a voice on a
+unison. Folding the doublings away recovered nearly everything on the test
+piece -- dropped voices went from 50 to 12. What is still too thick keeps the
+bass and the melody, which carry the outline, plus a note from the middle where
+the chord's character lives; the rest spreads onto the next column, the way a
+player would roll a chord by hand. One note in 394 was actually lost.
+
+**No accidentals.** Nothing to be done: the staff has no black keys, so sharps
+and flats are pulled to a neighbour. `-auto-key` minimises how often that
+happens, but it cannot reach zero for a tune that really does change key.
+
 ## Tests
 
 ```sh

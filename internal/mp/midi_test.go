@@ -167,3 +167,58 @@ func writeLongMIDI(t *testing.T) string {
 	f.Close()
 	return path
 }
+
+func TestOctaveDoublingsFoldInsteadOfCrowdingAColumn(t *testing.T) {
+	// The same note in three octaves collapses onto one staff position, so it
+	// should leave room for the rest of the chord rather than fill the column.
+	var s smf.SMF
+	s.TimeFormat = smf.MetricTicks(480)
+	var tr smf.Track
+	for _, k := range []uint8{36, 48, 60, 64, 67} { // C2, C3, C4 doubled, plus E and G
+		tr.Add(0, midi.NoteOn(0, k, 100))
+	}
+	tr.Add(480, midi.NoteOff(0, 60))
+	tr.Close(0)
+	s.Add(tr)
+
+	path := filepath.Join(t.TempDir(), "chord.mid")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.WriteTo(f); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+
+	song, rep, err := ImportMIDI(path, MIDIOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Doubled == 0 {
+		t.Error("three octaves of C should have folded to one staff position")
+	}
+	if rep.DroppedVoices != 0 {
+		t.Errorf("%d notes dropped; folding the doublings should have left room",
+			rep.DroppedVoices)
+	}
+
+	// The chord's three distinct tones should all be present.
+	pitches := map[byte]bool{}
+	for _, n := range song.Notes {
+		pitches[n.Pitch] = true
+	}
+	if len(pitches) != 3 {
+		t.Errorf("got %d distinct pitches, want the chord's 3", len(pitches))
+	}
+}
+
+func TestFitPitchNearFollowsTheLine(t *testing.T) {
+	// A note two octaves up should come back down next to where the part is,
+	// instead of landing wherever the arithmetic first reaches.
+	low, _, _ := fitPitchNear(60, 0) // C4 with no context
+	high, _, _ := fitPitchNear(84, low)
+	if high != low {
+		t.Errorf("C6 next to staff position %d resolved to %d, want %d", low, high, low)
+	}
+}

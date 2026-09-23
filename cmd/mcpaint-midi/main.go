@@ -109,8 +109,10 @@ func run(in, out, wav, instr string, steps, trans, tempo, maxPages, scale int, t
 
 	fmt.Printf("%s: %d notes read, %d placed across %d staves\n",
 		filepath.Base(in), rep.NotesRead, rep.NotesPlaced, rep.Pages)
-	fmt.Printf("  transposed %d, snapped %d, dropped %d voices and %d past the end\n",
-		rep.Transposed, rep.Snapped, rep.DroppedVoices, rep.DroppedLength)
+	fmt.Printf("  transposed %d, snapped %d, doublings folded %d, spread %d\n",
+		rep.Transposed, rep.Snapped, rep.Doubled, rep.Spread)
+	fmt.Printf("  dropped %d voices and %d past the end\n",
+		rep.DroppedVoices, rep.DroppedLength)
 	for _, w := range rep.Warnings {
 		fmt.Println("  " + w)
 	}
