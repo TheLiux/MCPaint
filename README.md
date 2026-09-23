@@ -130,6 +130,24 @@ go run ./cmd/mcpaint-cli -ops testdata/scene.json -video out/scene.mp4 -full
 
 `cmd/mcpaint-song` turns a chord chart into a composition and records it.
 
+`cmd/mcpaint-midi` plays a MIDI file. The staff holds 96 columns, so a longer piece
+is split across pages: each is loaded in turn, recorded, and the recordings are
+stitched back together with no gap at the seam.
+
+```sh
+# See how a piece fits before starting the emulator
+go run ./cmd/mcpaint-midi -midi song.mid -dry -auto-key
+
+# Play it, however many staves it takes
+go run ./cmd/mcpaint-midi -midi song.mid -auto-key -tempo 24 \
+    -instruments "0=star,1=gameboy,2=mario" -out out/song.mp4
+```
+
+`-auto-key` is worth reaching for. The staff is strictly diatonic C major, so a
+tune in another key has every accidental pulled to a neighbour; shifting the
+whole piece can put it in a key the staff actually has. On a Sicilian folk tune
+it took the accidentals from 86 down to 19.
+
 ## Tests
 
 ```sh
