@@ -91,7 +91,8 @@ func (s *server) reference(context.Context, *mcp.CallToolRequest, struct{}) (*mc
 
 type drawImageInput struct {
 	ImagePath string `json:"imagePath" jsonschema:"path to a PNG or JPEG to redraw on the canvas"`
-	Fit       string `json:"fit,omitempty" jsonschema:"contain (default), cover, or stretch"`
+	Fit       string `json:"fit,omitempty" jsonschema:"contain (default) fits the whole picture and bands what is left over; cover fills the canvas and crops it; stretch ignores the aspect ratio"`
+	Letterbox string `json:"letterbox,omitempty" jsonschema:"palette colour for the bands contain leaves, black by default"`
 	Dither    *bool  `json:"dither,omitempty" jsonschema:"Floyd-Steinberg dithering, on by default; turn it off for flat art"`
 	OutPath   string `json:"outPath,omitempty" jsonschema:"where to write the resulting PNG"`
 }
@@ -124,9 +125,20 @@ func (s *server) drawImage(_ context.Context, _ *mcp.CallToolRequest, in drawIma
 		return nil, imageResult{}, fmt.Errorf("unknown fit %q (want contain, cover or stretch)", in.Fit)
 	}
 
-	dither := in.Dither == nil || *in.Dither
+	pad := byte(13) // black
+	if in.Letterbox != "" {
+		v, err := mp.ParseColor(in.Letterbox)
+		if err != nil {
+			return nil, imageResult{}, fmt.Errorf("letterbox: %w", err)
+		}
+		pad = v
+	}
+
 	c := mp.NewCanvas()
-	c.DrawImage(src, fit, dither)
+	c.DrawImageWith(src, fit, mp.QuantizeOptions{
+		Dither:    in.Dither == nil || *in.Dither,
+		Letterbox: &pad,
+	})
 	sess.SetCanvas(c)
 	sess.RunFrames(8)
 

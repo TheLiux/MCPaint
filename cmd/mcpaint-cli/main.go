@@ -25,6 +25,7 @@ type config struct {
 	image, opsFile       string
 	out, video, wav      string
 	fit, rules, music    string
+	letterbox            string
 	dither, vivid, full  bool
 	strokes              bool
 	titleSeconds, target float64
@@ -41,7 +42,8 @@ func main() {
 	flag.StringVar(&c.out, "out", "out/canvas.png", "screenshot destination")
 	flag.StringVar(&c.video, "video", "", "record to this MP4")
 	flag.StringVar(&c.wav, "wav", "", "also write the recorded music on its own")
-	flag.StringVar(&c.fit, "fit", "contain", "contain | cover | stretch")
+	flag.StringVar(&c.fit, "fit", "contain", "contain (whole picture, banded) | cover (fills, crops) | stretch")
+	flag.StringVar(&c.letterbox, "letterbox", "black", "palette colour for the bands left by -fit contain")
 	flag.StringVar(&c.rules, "map", "", `pin source colours, e.g. "#4285F4=blue,#F4B400=yellow"`)
 	flag.StringVar(&c.music, "music", "theme-1", "canvas track: theme-1, theme-2, your-song or off")
 	flag.BoolVar(&c.dither, "dither", true, "Floyd-Steinberg dithering")
@@ -163,8 +165,13 @@ func buildOps(s *session.Session, c config) ([]mp.Op, error) {
 	}
 
 	target := mp.NewCanvas()
+	pad, err := mp.ParseColor(c.letterbox)
+	if err != nil {
+		return nil, fmt.Errorf("letterbox: %w", err)
+	}
+
 	target.DrawImageWith(src, mp.FitMode(c.fit), mp.QuantizeOptions{
-		Dither: c.dither, Vivid: c.vivid, Rules: rules,
+		Dither: c.dither, Vivid: c.vivid, Rules: rules, Letterbox: &pad,
 	})
 
 	if !c.strokes {

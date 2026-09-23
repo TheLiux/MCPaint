@@ -111,6 +111,10 @@ func (c *Canvas) DrawImage(src image.Image, fit FitMode, dither bool) {
 	c.DrawImageWith(src, fit, QuantizeOptions{Dither: dither})
 }
 
+// FitDefault is what to use when the caller has no opinion: fit the whole
+// picture in and band whatever is left over, rather than cutting into it.
+const FitDefault = FitContain
+
 // DrawImageVivid is DrawImage with a choice of colour matching. Vivid keeps
 // hue ahead of lightness, which suits flat artwork; leave it off for photos.
 func (c *Canvas) DrawImageVivid(src image.Image, fit FitMode, dither, vivid bool) {
@@ -130,12 +134,26 @@ type QuantizeOptions struct {
 	// overriding the match entirely. Pinned pixels take no dither error,
 	// so a logo's flat areas stay flat.
 	Rules []ColorRule
+
+	// Letterbox is the palette entry that fills whatever the picture does not
+	// cover once it has been fitted. Black reads as a border; leave it unset
+	// for that. The canvas background would instead look like part of the
+	// picture, which is worse than an obvious band.
+	Letterbox *byte
+}
+
+// letterbox returns the colour to pad with.
+func (o QuantizeOptions) letterbox() color.RGBA {
+	if o.Letterbox != nil {
+		return Palette[*o.Letterbox&0x0F]
+	}
+	return Palette[13] // black
 }
 
 // DrawImageWith quantizes src onto the visible canvas area.
 func (c *Canvas) DrawImageWith(src image.Image, fit FitMode, opt QuantizeOptions) {
 	dither, vivid := opt.Dither, opt.Vivid
-	scaled := resize(src, fit)
+	scaled := resize(src, fit, opt.letterbox())
 
 	// Work in float so diffused error is not truncated at every pixel.
 	type rgb struct{ r, g, b float64 }
@@ -200,10 +218,11 @@ func (c *Canvas) DrawImageWith(src image.Image, fit FitMode, opt QuantizeOptions
 }
 
 // resize scales src to exactly VisibleW x VisibleH according to fit, using
-// box sampling so downscaled photos do not alias.
-func resize(src image.Image, fit FitMode) *image.RGBA {
+// box sampling so downscaled photos do not alias. Whatever the picture does
+// not cover is filled with pad.
+func resize(src image.Image, fit FitMode, pad color.RGBA) *image.RGBA {
 	out := image.NewRGBA(image.Rect(0, 0, VisibleW, VisibleH))
-	draw.Draw(out, out.Bounds(), &image.Uniform{Palette[0]}, image.Point{}, draw.Src)
+	draw.Draw(out, out.Bounds(), &image.Uniform{pad}, image.Point{}, draw.Src)
 
 	sb := src.Bounds()
 	sw, sh := sb.Dx(), sb.Dy()
