@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"image/png"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 
@@ -209,6 +210,9 @@ func run(in, out, wav, instr string, steps, trans, tempo, maxPages, scale int, t
 		return err
 	}
 
+	// Every page shares one tempo, so one measurement of where the staff starts
+	// and how long a column lasts cuts them all to their exact length.
+	var lead, period float64
 	var all []int16
 	for i, song := range pages {
 		song.Tempo = byte(tempo)
@@ -218,6 +222,9 @@ func run(in, out, wav, instr string, steps, trans, tempo, maxPages, scale int, t
 		s.RunFrames(10)
 
 		if i == 0 {
+			if lead, period, err = s.ColumnTiming(); err != nil {
+				return err
+			}
 			f, err := os.Create(filepath.Join(filepath.Dir(out), "staff.png"))
 			if err == nil {
 				png.Encode(f, s.Frame())
@@ -231,7 +238,14 @@ func run(in, out, wav, instr string, steps, trans, tempo, maxPages, scale int, t
 		if err != nil {
 			return err
 		}
-		samples, err := s.PlayMeasured(session.PlayOptions{Video: v})
+		// Frames are rounded against the running total, not per page, so the
+		// fractions do not add up to drift over a long piece.
+		frames := 0
+		if i < len(pages)-1 {
+			frames = int(math.Round(float64((i+1)*mp.SongColumns)*period)) -
+				int(math.Round(float64(i*mp.SongColumns)*period))
+		}
+		samples, err := s.PlayWindow(int(math.Round(lead)), frames, v)
 		if cerr := v.Close(); err == nil {
 			err = cerr
 		}
