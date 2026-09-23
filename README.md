@@ -128,7 +128,10 @@ go run ./cmd/mcpaint-cli -image logo.png -fit contain -dither=false -vivid \
 go run ./cmd/mcpaint-cli -ops testdata/scene.json -video out/scene.mp4 -full
 ```
 
-`cmd/mcpaint-song` turns a chord chart into a composition and records it.
+`cmd/mcpaint-song` turns a chord chart into a composition and records it. A staff
+holds 96 columns and a single tempo, so the chart is laid out across pages that
+break wherever the tempo changes -- which is how a chorus can move faster than
+the verse around it.
 
 `cmd/mcpaint-midi` plays a MIDI file. The staff holds 96 columns, so a longer piece
 is split across pages: each is loaded in turn, recorded, and the recordings are
