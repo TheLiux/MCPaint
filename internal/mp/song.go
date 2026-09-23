@@ -84,6 +84,61 @@ func ParseInstrument(s string) (byte, error) {
 // Instruments lists the palette names in value order.
 func Instruments() []string { return instrumentNames[:] }
 
+// instrumentsByBrightness orders the palette from darkest to brightest.
+//
+// The order was measured rather than guessed from the icons: each instrument
+// was played on the same note and the spectral centroid of the attack taken,
+// which ran from about 320 Hz for the heart to 2250 Hz for the dog. Spreading
+// parts along it puts bass lines on dark instruments and melodies on bright
+// ones without anyone having to decide by ear.
+var instrumentsByBrightness = []byte{
+	14, 13, 1, 12, 8, 2, 5, 11, 6, 4, 0, 9, 10, 3, 7,
+}
+
+// InstrumentsByBrightness returns the palette ordered dark to bright.
+func InstrumentsByBrightness() []byte {
+	out := make([]byte, len(instrumentsByBrightness))
+	copy(out, instrumentsByBrightness)
+	return out
+}
+
+// PercussionInstrument is the shortest, punchiest voice in the palette, which
+// makes it the one to lay a drum pattern on. It rings for about a tenth of a
+// second where the longest voices ring for two thirds.
+const PercussionInstrument byte = 2 // yoshi
+
+// spreadInstruments picks n instruments spanning dark to bright, leaving out
+// any that are already spoken for.
+func spreadInstruments(n int, taken ...byte) []byte {
+	if n <= 0 {
+		return nil
+	}
+	avoid := map[byte]bool{}
+	for _, v := range taken {
+		avoid[v] = true
+	}
+	pool := make([]byte, 0, len(instrumentsByBrightness))
+	for _, v := range instrumentsByBrightness {
+		if !avoid[v] {
+			pool = append(pool, v)
+		}
+	}
+	if len(pool) == 0 {
+		pool = instrumentsByBrightness
+	}
+
+	out := make([]byte, n)
+	if n == 1 {
+		out[0] = pool[len(pool)/2]
+		return out
+	}
+	last := len(pool) - 1
+	for i := range out {
+		out[i] = pool[i*last/(n-1)]
+	}
+	return out
+}
+
 // Note is one placed note.
 type Note struct {
 	Column     int  `json:"column"`     // 0..95
