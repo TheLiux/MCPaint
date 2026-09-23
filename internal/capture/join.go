@@ -28,6 +28,11 @@ type JoinOptions struct {
 
 	// EndCold fades down to black at the very end.
 	EndCold bool
+
+	// SeamFades dips the joins between segments. Turn it off when the
+	// segments are consecutive pages of one piece of music, where a dip
+	// would put a hole in the middle of the tune.
+	SeamFades bool
 }
 
 // Join concatenates parts into a single file with a continuous audio track.
@@ -94,8 +99,9 @@ func JoinWith(out string, parts []Part, opt JoinOptions) error {
 	for i, s := range streams {
 		vIn, aIn := fmt.Sprintf("[%d:v]", s.v), fmt.Sprintf("[%d:a]", s.a)
 
-		fadeIn := fade > 0 && (i > 0 || opt.OpenCold)
-		fadeOut := fade > 0 && (i < len(streams)-1 || opt.EndCold)
+		atStart, atEnd := i == 0, i == len(streams)-1
+		fadeIn := fade > 0 && ((atStart && opt.OpenCold) || (!atStart && opt.SeamFades))
+		fadeOut := fade > 0 && ((atEnd && opt.EndCold) || (!atEnd && opt.SeamFades))
 		if s.dur <= 2*fade {
 			fadeIn, fadeOut = false, false
 		}

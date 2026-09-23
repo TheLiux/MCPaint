@@ -119,7 +119,7 @@ func run(c config) error {
 		// The console fades through black between its own screens, so the
 		// seams do the same rather than cutting.
 		if err := capture.JoinWith(c.video, parts, capture.JoinOptions{
-			FadeSeconds: 0.6, OpenCold: true, EndCold: true,
+			FadeSeconds: 0.6, OpenCold: true, EndCold: true, SeamFades: true,
 		}); err != nil {
 			return err
 		}

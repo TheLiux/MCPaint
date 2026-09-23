@@ -212,7 +212,7 @@ func main() {
 		log.Fatal(err)
 	}
 	if err := capture.JoinWith(*out, []capture.Part{{Video: *out + ".tmp.mp4", Audio: *wav}},
-		capture.JoinOptions{FadeSeconds: 0.6, OpenCold: true, EndCold: true}); err != nil {
+		capture.JoinOptions{FadeSeconds: 0.6, OpenCold: true, EndCold: true, SeamFades: true}); err != nil {
 		log.Fatal(err)
 	}
 	os.Remove(*out + ".tmp.mp4")
