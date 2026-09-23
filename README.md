@@ -151,6 +151,13 @@ tune in another key has every accidental pulled to a neighbour; shifting the
 whole piece can put it in a key the staff actually has. On a Sicilian folk tune
 it took the accidentals from 86 down to 19.
 
+Instruments are chosen by register: channels are ranked by median pitch and
+handed voices spanning the palette from darkest to brightest, so a bass line
+does not land on the same bright voice as the melody. That ordering was
+measured, not guessed from the icons -- each instrument was played and the
+spectral centroid of its attack taken, running from about 320 Hz to 2250 Hz.
+`internal/session` has the test that measures it.
+
 ### What the staff cannot hold, and what is done about it
 
 Three limits bite, and each has a different answer.
@@ -169,6 +176,17 @@ piece -- dropped voices went from 50 to 12. What is still too thick keeps the
 bass and the melody, which carry the outline, plus a note from the middle where
 the chord's character lives; the rest spreads onto the next column, the way a
 player would roll a chord by hand. One note in 394 was actually lost.
+
+**Percussion.** General MIDI reserves channel 10 for drums, where the key
+number picks a kit piece rather than a pitch. Reading those as notes puts
+nonsense on the staff and poisons key detection along with it: on one
+arrangement dropping the drums took the accidentals from 2157 to 755 and
+changed which key `-auto-key` chose. `-drums auto` keeps the pattern instead,
+laid on three staff positions standing for low, middle and high drums.
+
+**Too many parts.** Three voices cannot hold a seven-part arrangement.
+`-channels "5,1,9"` keeps the ones that matter -- typically a melody, a bass
+and the drums -- which beats letting an arbitrary rule decide.
 
 **No accidentals.** Nothing to be done: the staff has no black keys, so sharps
 and flats are pulled to a neighbour. `-auto-key` minimises how often that

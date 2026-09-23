@@ -30,12 +30,14 @@ func main() {
 		instr  = flag.String("instruments", "", `per channel, e.g. "0=mario,1=gameboy,2=star"`)
 		scale  = flag.Int("scale", 3, "video upscale factor")
 		titleS = flag.Float64("title", 0, "seconds of title screen before the music")
+		chans  = flag.String("channels", "", "keep only these MIDI channels, e.g. \"5,1,9\"; empty keeps all")
+		drums  = flag.String("drums", "", "instrument for the drum channel; empty drops it, \"auto\" uses the punchiest voice")
 		dry    = flag.Bool("dry", false, "report how the piece fits and stop, without starting the emulator")
 		auto   = flag.Bool("auto-key", false, "try every transposition and keep the one that needs the fewest accidentals")
 	)
 	flag.Parse()
 
-	if err := run(*in, *out, *wav, *instr, *steps, *trans, *tempo, *maxPg, *scale, *titleS, *dry, *auto); err != nil {
+	if err := run(*in, *out, *wav, *instr, *steps, *trans, *tempo, *maxPg, *scale, *titleS, *dry, *auto, *drums, *chans); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -74,7 +76,7 @@ func splitComma(s string) []string {
 	return out
 }
 
-func run(in, out, wav, instr string, steps, trans, tempo, maxPages, scale int, titleSeconds float64, dry, auto bool) error {
+func run(in, out, wav, instr string, steps, trans, tempo, maxPages, scale int, titleSeconds float64, dry, auto bool, drums, chans string) error {
 	if in == "" {
 		return fmt.Errorf("pass -midi")
 	}
@@ -91,6 +93,28 @@ func run(in, out, wav, instr string, steps, trans, tempo, maxPages, scale int, t
 		StepsPerQuarter: steps,
 		Transpose:       trans,
 		Instruments:     instruments,
+	}
+
+	for _, part := range splitComma(chans) {
+		var ch int
+		if _, err := fmt.Sscanf(part, "%d", &ch); err != nil || ch < 0 || ch > 15 {
+			return fmt.Errorf("bad channel %q (want 0..15)", part)
+		}
+		opts.Channels = append(opts.Channels, ch)
+	}
+
+	switch drums {
+	case "":
+		// dropped
+	case "auto":
+		v := mp.PercussionInstrument
+		opts.Percussion = &v
+	default:
+		v, err := mp.ParseInstrument(drums)
+		if err != nil {
+			return fmt.Errorf("drums: %w", err)
+		}
+		opts.Percussion = &v
 	}
 
 	if auto {
@@ -115,6 +139,18 @@ func run(in, out, wav, instr string, steps, trans, tempo, maxPages, scale int, t
 		rep.DroppedVoices, rep.DroppedLength)
 	for _, w := range rep.Warnings {
 		fmt.Println("  " + w)
+	}
+
+	if chans, err := mp.Channels(in, opts); err == nil {
+		fmt.Println("  channel  notes  range     voice")
+		for _, c := range chans {
+			kind := ""
+			if c.Percussion {
+				kind = " (percussion)"
+			}
+			fmt.Printf("    %2d    %6d  %3d..%-3d  %s%s\n",
+				c.Channel, c.Notes, c.Low, c.High, c.Instrument, kind)
+		}
 	}
 
 	if dry {

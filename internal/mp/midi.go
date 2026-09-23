@@ -15,16 +15,17 @@ var staffMIDI = [MaxPitch + 1]int{0, 59, 60, 62, 64, 65, 67, 69, 71, 72, 74, 76,
 // ImportReport explains what had to give when a MIDI file was squeezed into
 // Mario Paint's 96 columns, 13 pitches and three voices.
 type ImportReport struct {
-	Pages         int      `json:"pages" jsonschema:"staves the piece needed, 96 columns each"`
-	NotesRead     int      `json:"notesRead"`
-	NotesPlaced   int      `json:"notesPlaced"`
-	Doubled       int      `json:"doubled" jsonschema:"octave doublings that collapsed onto a note already in the column"`
-	Spread        int      `json:"spread" jsonschema:"notes moved to the next column because the chord was too thick for three voices"`
-	Transposed    int      `json:"transposed" jsonschema:"notes moved by whole octaves to reach the staff"`
-	Snapped       int      `json:"snapped" jsonschema:"sharps and flats pulled to the nearest staff position"`
-	DroppedVoices int      `json:"droppedVoices" jsonschema:"notes lost because a column already held three"`
-	DroppedLength int      `json:"droppedLength" jsonschema:"notes past the last column of the last page"`
-	Warnings      []string `json:"warnings,omitempty"`
+	Pages             int      `json:"pages" jsonschema:"staves the piece needed, 96 columns each"`
+	NotesRead         int      `json:"notesRead"`
+	NotesPlaced       int      `json:"notesPlaced"`
+	Doubled           int      `json:"doubled" jsonschema:"octave doublings that collapsed onto a note already in the column"`
+	Spread            int      `json:"spread" jsonschema:"notes moved to the next column because the chord was too thick for three voices"`
+	DroppedPercussion int      `json:"droppedPercussion" jsonschema:"drum hits left out; set an instrument for them to keep the pattern"`
+	Transposed        int      `json:"transposed" jsonschema:"notes moved by whole octaves to reach the staff"`
+	Snapped           int      `json:"snapped" jsonschema:"sharps and flats pulled to the nearest staff position"`
+	DroppedVoices     int      `json:"droppedVoices" jsonschema:"notes lost because a column already held three"`
+	DroppedLength     int      `json:"droppedLength" jsonschema:"notes past the last column of the last page"`
+	Warnings          []string `json:"warnings,omitempty"`
 }
 
 // MIDIOptions tunes the conversion.
@@ -39,6 +40,45 @@ type MIDIOptions struct {
 	// Instruments maps a MIDI channel (0-15) to a Mario Paint instrument.
 	// Channels with no entry fall back to a rotation through the palette.
 	Instruments map[int]byte
+
+	// Percussion names the instrument to play the drum channel with. General
+	// MIDI reserves channel 10 -- index 9 -- for percussion, where the key
+	// number picks a drum rather than a pitch, so reading those as notes puts
+	// nonsense on the staff. Leave it nil to drop the drums; set it and the
+	// pattern is kept, laid on three staff positions standing for low, middle
+	// and high drums.
+	Percussion *byte
+
+	// PercussionChannel overrides which channel carries the drums. Zero means
+	// the General MIDI default.
+	PercussionChannel int
+
+	// Channels, when set, keeps only these MIDI channels. A dense
+	// arrangement has far more parts than three voices can hold, and picking
+	// which ones matter beats letting an arbitrary rule decide.
+	Channels []int
+}
+
+// percussionChannel returns the channel the drums are on.
+func (o MIDIOptions) percussionChannel() int {
+	if o.PercussionChannel > 0 {
+		return o.PercussionChannel
+	}
+	return 9
+}
+
+// drumPitch places a General MIDI drum on one of three staff positions,
+// standing for a low, middle or high drum. The exact pitches are arbitrary;
+// what carries is the rhythm and the separation between them.
+func drumPitch(key int) byte {
+	switch {
+	case key <= 41: // kick and low toms
+		return 2
+	case key <= 50: // snare and mid toms
+		return 6
+	default: // hats, cymbals and the rest
+		return 11
+	}
 }
 
 // fitPitch maps a MIDI note number onto a staff position, moving it by whole
@@ -160,6 +200,20 @@ func readMIDI(path string, opt MIDIOptions) ([]midiEvent, error) {
 		return nil, fmt.Errorf("reading %s: %w", path, err)
 	}
 
+	if len(opt.Channels) > 0 {
+		keep := map[int]bool{}
+		for _, ch := range opt.Channels {
+			keep[ch] = true
+		}
+		filtered := events[:0]
+		for _, e := range events {
+			if keep[e.channel] {
+				filtered = append(filtered, e)
+			}
+		}
+		events = filtered
+	}
+
 	// Stable order by time, then by pitch descending: when a column overflows
 	// the melody on top survives and an inner voice is what gets dropped.
 	sort.SliceStable(events, func(i, j int) bool {
@@ -174,25 +228,46 @@ func readMIDI(path string, opt MIDIOptions) ([]midiEvent, error) {
 	return events, nil
 }
 
-// instrumentPicker maps MIDI channels to Mario Paint instruments, falling back
-// to a rotation through the palette for channels the caller did not name.
-func instrumentPicker(opt MIDIOptions) func(int) byte {
-	assigned := map[int]byte{}
-	var next byte
-	return func(ch int) byte {
-		if opt.Instruments != nil {
-			if v, ok := opt.Instruments[ch]; ok {
-				return v
-			}
+// assignInstruments gives each channel an instrument suited to its register.
+//
+// Channels are ranked by their median pitch and handed instruments spanning
+// the palette from darkest to brightest, so a bass line does not end up on the
+// same bright voice as the melody. Anything the caller named explicitly wins.
+func assignInstruments(events []midiEvent, opt MIDIOptions) map[int]byte {
+	drums := opt.percussionChannel()
+
+	pitches := map[int][]int{}
+	for _, e := range events {
+		if e.channel == drums {
+			continue
 		}
-		if v, ok := assigned[ch]; ok {
-			return v
-		}
-		v := next % byte(len(instrumentNames))
-		assigned[ch] = v
-		next++
-		return v
+		pitches[e.channel] = append(pitches[e.channel], e.note)
 	}
+
+	channels := make([]int, 0, len(pitches))
+	for ch := range pitches {
+		channels = append(channels, ch)
+	}
+	sort.Slice(channels, func(i, j int) bool {
+		a, b := pitches[channels[i]], pitches[channels[j]]
+		sort.Ints(a)
+		sort.Ints(b)
+		return a[len(a)/2] < b[len(b)/2]
+	})
+
+	var taken []byte
+	if opt.Percussion != nil {
+		taken = append(taken, *opt.Percussion)
+	}
+	palette := spreadInstruments(len(channels), taken...)
+	out := map[int]byte{}
+	for i, ch := range channels {
+		out[ch] = palette[i]
+	}
+	for ch, v := range opt.Instruments {
+		out[ch] = v
+	}
+	return out
 }
 
 // ImportMIDI converts a Standard MIDI File into a single Mario Paint song,
@@ -203,6 +278,58 @@ func ImportMIDI(path string, opt MIDIOptions) (*Song, *ImportReport, error) {
 		return nil, nil, err
 	}
 	return songs[0], rep, nil
+}
+
+// ChannelSummary describes one channel of a MIDI file and what it was given.
+type ChannelSummary struct {
+	Channel    int    `json:"channel"`
+	Notes      int    `json:"notes"`
+	Low        int    `json:"low"`
+	High       int    `json:"high"`
+	Instrument string `json:"instrument"`
+	Percussion bool   `json:"percussion"`
+}
+
+// Channels reports what a MIDI file contains and how it would be voiced.
+func Channels(path string, opt MIDIOptions) ([]ChannelSummary, error) {
+	events, err := readMIDI(path, opt)
+	if err != nil {
+		return nil, err
+	}
+	instruments := assignInstruments(events, opt)
+	drums := opt.percussionChannel()
+
+	byChan := map[int]*ChannelSummary{}
+	for _, e := range events {
+		c := byChan[e.channel]
+		if c == nil {
+			c = &ChannelSummary{Channel: e.channel, Low: 127, Percussion: e.channel == drums}
+			byChan[e.channel] = c
+		}
+		c.Notes++
+		note := e.note - opt.Transpose
+		if note < c.Low {
+			c.Low = note
+		}
+		if note > c.High {
+			c.High = note
+		}
+	}
+
+	out := make([]ChannelSummary, 0, len(byChan))
+	for _, c := range byChan {
+		switch {
+		case c.Percussion && opt.Percussion != nil:
+			c.Instrument = InstrumentName(*opt.Percussion)
+		case c.Percussion:
+			c.Instrument = "(dropped)"
+		default:
+			c.Instrument = InstrumentName(instruments[c.Channel])
+		}
+		out = append(out, *c)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Notes > out[j].Notes })
+	return out, nil
 }
 
 // ImportMIDIPages converts a Standard MIDI File into as many staves as the
@@ -233,7 +360,7 @@ func ImportMIDIPages(path string, opt MIDIOptions, maxPages int) ([]*Song, *Impo
 	}
 
 	rep := &ImportReport{NotesRead: len(events), Pages: pages}
-	instrumentFor := instrumentPicker(opt)
+	instruments := assignInstruments(events, opt)
 
 	// Fold every note onto the staff first, keeping each part near itself.
 	type placed struct {
@@ -244,7 +371,23 @@ func ImportMIDIPages(path string, opt MIDIOptions, maxPages int) ([]*Song, *Impo
 	lastOf := map[int]byte{}
 	byColumn := map[int][]placed{}
 
+	drums := opt.percussionChannel()
+
 	for _, e := range events {
+		if e.channel == drums {
+			if opt.Percussion == nil {
+				rep.DroppedPercussion++
+				continue
+			}
+			if e.column/SongColumns >= pages {
+				rep.DroppedLength++
+				continue
+			}
+			byColumn[e.column] = append(byColumn[e.column],
+				placed{e.column, drumPitch(e.note - opt.Transpose), *opt.Percussion})
+			continue
+		}
+
 		pitch, transposed, snapped := fitPitchNear(e.note, lastOf[e.channel])
 		if transposed {
 			rep.Transposed++
@@ -259,7 +402,7 @@ func ImportMIDIPages(path string, opt MIDIOptions, maxPages int) ([]*Song, *Impo
 			continue
 		}
 		byColumn[e.column] = append(byColumn[e.column],
-			placed{e.column, pitch, instrumentFor(e.channel)})
+			placed{e.column, pitch, instruments[e.channel]})
 	}
 
 	columns := make([]int, 0, len(byColumn))
@@ -336,6 +479,11 @@ func ImportMIDIPages(path string, opt MIDIOptions, maxPages int) ([]*Song, *Impo
 		rep.Warnings = append(rep.Warnings, fmt.Sprintf(
 			"%d notes fell past page %d; raise the page limit or lower stepsPerQuarter",
 			rep.DroppedLength, pages))
+	}
+	if rep.DroppedPercussion > 0 {
+		rep.Warnings = append(rep.Warnings, fmt.Sprintf(
+			"%d drum hits were left out; name a percussion instrument to keep the pattern",
+			rep.DroppedPercussion))
 	}
 	if rep.Doubled > 0 {
 		rep.Warnings = append(rep.Warnings, fmt.Sprintf(
