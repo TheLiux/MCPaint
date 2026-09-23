@@ -34,9 +34,9 @@ gif "$tmp/robot.mp4" examples/robot/drawing.gif
 # Drawing operations: shapes laid down with the game's own tools.
 build/mcpaint-cli -ops testdata/scene.json -out examples/scene.png
 
-# A MIDI file in D major, two parts, longer than one staff.
+# A MIDI file in D major, two parts, longer than one staff. The staff
+# screenshot lands next to the video.
 build/mcpaint-midi -midi examples/ode/ode.mid -auto-key -steps 2 -tempo 17 \
 	-instruments "0=star,1=mario" \
-	-out "$tmp/ode.mp4" -wav "$tmp/ode.wav"
-cp "$tmp/staff.png" examples/ode/staff.png
+	-scale 2 -out examples/ode/ode.mp4 -wav "$tmp/ode.wav"
 ffmpeg -loglevel error -y -i "$tmp/ode.wav" -b:a 96k examples/ode/ode.mp3

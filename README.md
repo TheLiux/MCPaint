@@ -37,7 +37,8 @@ tools instead:
 ![scene](examples/scene.png)
 
 [Ode to Joy](examples/ode/ode.mid), written in D major with a bass line, comes
-out on the staff in C across two pages; [listen](examples/ode/ode.mp3).
+out on the staff in C across two pages: [watch it play](examples/ode/ode.mp4)
+or [just listen](examples/ode/ode.mp3).
 
 ![ode staff](examples/ode/staff.png)
 
