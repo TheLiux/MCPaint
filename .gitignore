@@ -19,3 +19,6 @@
 /mcpaint-cli
 /mcpaint-song
 /mcpaint
+
+# Examples are generated from sources in the repo and are meant to be committed
+!/examples/**
