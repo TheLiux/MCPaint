@@ -189,7 +189,13 @@ func (s *Session) songSpan(maxFrames int) (first, last int, err error) {
 	if maxFrames <= 0 {
 		maxFrames = int(120 * s.FPS())
 	}
+	// A rest can last as long as the staff but no longer, so it takes a whole
+	// staff of silence to call the song over; anything shorter cuts a page at
+	// its first long rest. A column lasts about 4.3/tempo seconds, measured.
 	quietLimit := int(0.6 * s.FPS())
+	if t := s.wram[mp.SongTempo]; t > 0 {
+		quietLimit = int(float64(mp.SongColumns) * 4.3 / float64(t) * s.FPS())
+	}
 
 	mark, err := s.core.Serialize()
 	if err != nil {
@@ -256,6 +262,74 @@ func (s *Session) PlayMeasured(opt PlayOptions) ([]int16, error) {
 		s.core.Run()
 		if opt.Video != nil && err == nil {
 			err = opt.Video.Write(s.core.Frame())
+		}
+	}
+	samples := s.core.StopAudioCapture()
+	s.Click(ComposerStopX, ComposerStopY)
+	return samples, err
+}
+
+// ColumnTiming measures the song now in WRAM: how many frames pass between
+// pressing PLAY and the first column sounding, and how many each column lasts.
+//
+// It plays two probes at the song's own tempo, one note on the first column
+// and one on the last, and times their onsets. The song is put back after.
+func (s *Session) ColumnTiming() (lead, period float64, err error) {
+	saved := s.ReadSong()
+	defer func() {
+		s.SetSong(saved)
+		s.RunFrames(10)
+	}()
+
+	onset := func(col int) (int, error) {
+		probe := mp.NewSong()
+		probe.Tempo, probe.TimeSignature = saved.Tempo, saved.TimeSignature
+		probe.Add(col, mp.MinPitch+6, 0)
+		s.SetSong(probe)
+		s.RunFrames(10)
+		first, _, err := s.songSpan(0)
+		if err == nil && first < 0 {
+			err = fmt.Errorf("timing probe on column %d stayed silent", col)
+		}
+		return first, err
+	}
+
+	first, err := onset(0)
+	if err != nil {
+		return 0, 0, err
+	}
+	last, err := onset(mp.SongColumns - 1)
+	if err != nil {
+		return 0, 0, err
+	}
+	return float64(first), float64(last-first) / float64(mp.SongColumns-1), nil
+}
+
+// PlayWindow presses PLAY, lets skip frames go by unrecorded and records the
+// next frames. With frames at zero it records until shortly after the last
+// sound, for the final page of a piece.
+//
+// Unlike PlayMeasured it keeps the rests at either end of the staff, so pages
+// cut to their exact length join without swallowing the silence between them.
+func (s *Session) PlayWindow(skip, frames int, video *capture.Video) ([]int16, error) {
+	if frames <= 0 {
+		_, last, err := s.songSpan(0)
+		if err != nil {
+			return nil, err
+		}
+		frames = last + int(0.2*s.FPS()) - skip
+	}
+
+	s.Click(ComposerStopX, ComposerStopY)
+	s.Click(ComposerPlayX, ComposerPlayY)
+	s.core.RunFrames(skip)
+
+	var err error
+	s.core.StartAudioCapture()
+	for f := 0; f < frames; f++ {
+		s.core.Run()
+		if video != nil && err == nil {
+			err = video.Write(s.core.Frame())
 		}
 	}
 	samples := s.core.StopAudioCapture()
