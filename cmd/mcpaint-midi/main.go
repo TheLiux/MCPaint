@@ -30,6 +30,7 @@ func main() {
 		instr  = flag.String("instruments", "", `per channel, e.g. "0=mario,1=gameboy,2=star"`)
 		scale  = flag.Int("scale", 3, "video upscale factor")
 		titleS = flag.Float64("title", 0, "seconds of title screen before the music")
+		parts  = flag.Bool("auto-parts", false, "work out which channels carry the tune and keep those")
 		chans  = flag.String("channels", "", "keep only these MIDI channels, e.g. \"5,1,9\"; empty keeps all")
 		drums  = flag.String("drums", "", "instrument for the drum channel; empty drops it, \"auto\" uses the punchiest voice")
 		dry    = flag.Bool("dry", false, "report how the piece fits and stop, without starting the emulator")
@@ -37,7 +38,7 @@ func main() {
 	)
 	flag.Parse()
 
-	if err := run(*in, *out, *wav, *instr, *steps, *trans, *tempo, *maxPg, *scale, *titleS, *dry, *auto, *drums, *chans); err != nil {
+	if err := run(*in, *out, *wav, *instr, *steps, *trans, *tempo, *maxPg, *scale, *titleS, *dry, *auto, *drums, *chans, *parts); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -76,7 +77,7 @@ func splitComma(s string) []string {
 	return out
 }
 
-func run(in, out, wav, instr string, steps, trans, tempo, maxPages, scale int, titleSeconds float64, dry, auto bool, drums, chans string) error {
+func run(in, out, wav, instr string, steps, trans, tempo, maxPages, scale int, titleSeconds float64, dry, auto bool, drums, chans string, autoParts bool) error {
 	if in == "" {
 		return fmt.Errorf("pass -midi")
 	}
@@ -117,15 +118,26 @@ func run(in, out, wav, instr string, steps, trans, tempo, maxPages, scale int, t
 		opts.Percussion = &v
 	}
 
+	analysed, err := mp.Parts(in, opts)
+	if err != nil {
+		return err
+	}
+	if autoParts && len(opts.Channels) == 0 {
+		opts.Channels = mp.SelectParts(analysed, mp.SongChannels, drums != "")
+		fmt.Printf("keeping channels %v\n", opts.Channels)
+	}
+
+	// The key is chosen after the parts, not before: picking it against
+	// channels that are then thrown away optimises for music nobody hears.
 	if auto {
-		best, snapped, err := bestKey(in, opts, maxPages)
+		fit, err := mp.BestKey(in, opts)
 		if err != nil {
 			return err
 		}
-		fmt.Printf("best key: transpose %+d, %d accidentals to snap\n", best, snapped)
-		opts.Transpose = best
+		fmt.Printf("best key: transpose %+d, melody keeps %.0f%% of its movement (%.0f%% flattened, %d accidentals)\n",
+			fit.Transpose, fit.Preserved, fit.Flattened, fit.Accidental)
+		opts.Transpose = fit.Transpose
 	}
-
 	pages, rep, err := mp.ImportMIDIPages(in, opts, maxPages)
 	if err != nil {
 		return err
@@ -142,14 +154,23 @@ func run(in, out, wav, instr string, steps, trans, tempo, maxPages, scale int, t
 	}
 
 	if chans, err := mp.Channels(in, opts); err == nil {
-		fmt.Println("  channel  notes  range     voice")
+		voices := map[int]string{}
 		for _, c := range chans {
-			kind := ""
-			if c.Percussion {
-				kind = " (percussion)"
+			voices[c.Channel] = c.Instrument
+		}
+		kept := map[int]bool{}
+		for _, ch := range opts.Channels {
+			kept[ch] = true
+		}
+		fmt.Println("  ch  notes  range     line   pace   part          voice")
+		for _, p := range analysed {
+			mark := " "
+			if len(opts.Channels) == 0 || kept[p.Channel] {
+				mark = "*"
 			}
-			fmt.Printf("    %2d    %6d  %3d..%-3d  %s%s\n",
-				c.Channel, c.Notes, c.Low, c.High, c.Instrument, kind)
+			fmt.Printf("  %s%2d %6d  %3d..%-3d  %5.2f  %5.1f   %-12s  %s\n",
+				mark, p.Channel, p.Notes, p.Low, p.High,
+				p.Polyphony, p.Density, p.Role, voices[p.Channel])
 		}
 	}
 
@@ -247,36 +268,6 @@ func run(in, out, wav, instr string, steps, trans, tempo, maxPages, scale int, t
 
 	fmt.Printf("wrote %s (%.1fs) and %s\n", out, capture.Duration(out), wav)
 	return nil
-}
-
-// bestKey finds the transposition that leaves the fewest notes off the staff.
-//
-// The staff is strictly diatonic C major, so a tune in another key has every
-// accidental pulled to a neighbour. Shifting the whole piece can put it in a
-// key the staff actually has, which is far kinder than snapping note by note.
-func bestKey(path string, opts mp.MIDIOptions, maxPages int) (int, int, error) {
-	bestShift, bestSnapped := 0, -1
-	for shift := -11; shift <= 11; shift++ {
-		try := opts
-		try.Transpose = shift
-		_, rep, err := mp.ImportMIDIPages(path, try, maxPages)
-		if err != nil {
-			return 0, 0, err
-		}
-		// Prefer fewer accidentals, then the smallest shift.
-		if bestSnapped < 0 || rep.Snapped < bestSnapped ||
-			(rep.Snapped == bestSnapped && abs(shift) < abs(bestShift)) {
-			bestShift, bestSnapped = shift, rep.Snapped
-		}
-	}
-	return bestShift, bestSnapped, nil
-}
-
-func abs(v int) int {
-	if v < 0 {
-		return -v
-	}
-	return v
 }
 
 func recordTitle(s *session.Session, tmp string, fps float64, scale int, seconds float64) (capture.Part, error) {
