@@ -129,7 +129,7 @@ screen-transition sound effect, and cached.
 
 The limits are tight and shape everything:
 
-- **Canvas** 248×164, 16 fixed colours, no blending.
+- **Canvas** 248×168, 16 fixed colours, no blending.
 - **Songs** up to 96 columns holding at most three notes each.
 - **Pitches** are 13 diatonic staff positions, B3 to G5. There are no sharps
   or flats, so imported music gets snapped.

@@ -102,8 +102,8 @@ func TestServerEndToEnd(t *testing.T) {
 			},
 		},
 	}, &drew)
-	if drew.Width != 248 || drew.Height != 164 {
-		t.Errorf("canvas reported as %dx%d, want 248x164", drew.Width, drew.Height)
+	if drew.Width != 248 || drew.Height != 168 {
+		t.Errorf("canvas reported as %dx%d, want 248x168", drew.Width, drew.Height)
 	}
 	if _, err := os.Stat(drew.Path); err != nil {
 		t.Errorf("draw reported %q but it is not there: %v", drew.Path, err)

@@ -81,7 +81,7 @@ func (s *server) reference(context.Context, *mcp.CallToolRequest, struct{}) (*mc
 		SongColumns:  mp.SongColumns,
 		SongChannels: mp.SongChannels,
 		Notes: "Mario Paint's limits are strict: 16 colours with no blending, " +
-			"a 248x164 canvas, and songs of at most 96 columns holding three " +
+			"a 248x168 canvas, and songs of at most 96 columns holding three " +
 			"notes each. Pitches are diatonic staff positions, so there are no " +
 			"sharps or flats.",
 	}, nil

@@ -31,7 +31,7 @@ fine while working on the code and slow otherwise.
 
 ## Pictures
 
-The canvas is 248×164 with sixteen fixed colours. Everything below comes down
+The canvas is 248×168 with sixteen fixed colours. Everything below comes down
 to those two numbers.
 
 ### Framing
@@ -44,12 +44,12 @@ and a profile picture is square. `-fit` decides what gives:
 - `contain` keeps the whole picture and leaves bands at the sides.
 - `stretch` distorts it; rarely what you want.
 
-For anything with a subject, crop it yourself first, to 248:164, around what
+For anything with a subject, crop it yourself first, to 248:168, around what
 matters. `ffmpeg` does it in one line; `crop=w:h:x:y` takes the top-left corner:
 
 ```sh
-# a 1730-pixel-wide photo: 1730×1144 is 248:164, starting 170 px down
-ffmpeg -i photo.jpg -vf "crop=1730:1144:0:170" framed.png
+# a 1730-pixel-wide photo: 1730×1172 is 248:168, starting 170 px down
+ffmpeg -i photo.jpg -vf "crop=1730:1172:0:170" framed.png
 ```
 
 When you use `contain`, pad with the picture's own background instead of
@@ -57,7 +57,7 @@ leaving bands. Sample a corner, then pad to the canvas ratio:
 
 ```sh
 ffmpeg -i sprite.png -vf "crop=1:1:5:5,format=rgb24" -f rawvideo - | xxd -p   # e.g. 7d0000
-ffmpeg -i sprite.png -vf "pad=968:640:164:0:color=0x7d0000" padded.png         # 640 tall → 968 wide
+ffmpeg -i sprite.png -vf "pad=945:640:152:0:color=0x7d0000" padded.png         # 640 tall → 945 wide
 ```
 
 ### Matching the colours
@@ -220,7 +220,7 @@ read.
 
 | Symptom | Cause |
 |---|---|
-| The top of a head is missing | `-fit cover` crops centred. Crop to 248:164 yourself first. |
+| The top of a head is missing | `-fit cover` crops centred. Crop to 248:168 yourself first. |
 | White bands beside the picture | `-fit contain` on a picture of another ratio. Pad it with its background. |
 | The melody lurches up and down | Folded by octaves. Look at `transposed` in `-dry` and try a key 12 away. |
 | Fast passages sound smeared | `-steps 2` on sixteenth notes. Use `-steps 4`. |

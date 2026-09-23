@@ -7,12 +7,14 @@
 package mp
 
 const (
-	// Canvas graphics buffer: 32x22 SNES 4bpp tiles, 32 bytes each.
+	// Canvas graphics buffer: 32x23 SNES 4bpp tiles, 32 bytes each. The
+	// last tile row is only partly on screen, but its top four pixel rows
+	// are the bottom of the visible canvas.
 	CanvasBase   = 0xA000
 	CanvasTilesW = 32
-	CanvasTilesH = 22
+	CanvasTilesH = 23
 	CanvasBufW   = CanvasTilesW * 8 // 256
-	CanvasBufH   = CanvasTilesH * 8 // 176
+	CanvasBufH   = CanvasTilesH * 8 // 184
 	CanvasBytes  = CanvasTilesW * CanvasTilesH * 32
 
 	AnimCellBase = 0x4000
@@ -49,7 +51,7 @@ const (
 	VisibleX = 4
 	VisibleY = 12
 	VisibleW = 248
-	VisibleH = 164
+	VisibleH = 168
 
 	// A buffer pixel at (x, y) appears on screen at (x, y+ScreenYOffset).
 	ScreenYOffset = 15
