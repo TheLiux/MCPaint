@@ -222,8 +222,12 @@ func BestKey(path string, opt MIDIOptions) (MelodyFit, error) {
 		if !ok {
 			continue
 		}
+		// On a tie the shape is equally safe either way, so the key with
+		// fewer accidentals wins, and only then the smaller shift.
+		tie := fit.score() == best.score()
 		if !found || fit.score() > best.score() ||
-			(fit.score() == best.score() && abs(shift) < abs(best.Transpose)) {
+			(tie && fit.Accidental < best.Accidental) ||
+			(tie && fit.Accidental == best.Accidental && abs(shift) < abs(best.Transpose)) {
 			best, found = fit, true
 		}
 	}
