@@ -19,6 +19,31 @@ note.
 All audio is the SPC700's own output, captured from the same run that produced
 the frames, so picture and sound need no resynchronising.
 
+## Examples
+
+Every example is rebuilt from its source by [`examples/make.sh`](examples/make.sh).
+
+| Source | In Mario Paint | Drawn |
+|---|---|---|
+| ![fractal](examples/fractal/source.png) | ![fractal canvas](examples/fractal/canvas.png) | ![fractal drawing](examples/fractal/drawing.gif) |
+| ![robot](examples/robot/source.png) | ![robot canvas](examples/robot/canvas.png) | ![robot drawing](examples/robot/drawing.gif) |
+
+The fractal is a photograph as far as the palette is concerned: dithered,
+matched on lightness. The robot is flat pixel art, drawn with dithering off and
+hue matched first, so every block stays a single colour.
+[`testdata/scene.json`](testdata/scene.json) draws a scene out of the game's own
+tools instead:
+
+![scene](examples/scene.png)
+
+[Ode to Joy](examples/ode/ode.mid), written in D major with a bass line, comes
+out on the staff in C across two pages; [listen](examples/ode/ode.mp3).
+
+![ode staff](examples/ode/staff.png)
+
+The [guide](docs/GUIDE.md) covers doing the same with your own pictures and
+songs: framing, colour flags, choosing a key, tempo and instruments.
+
 ## Requirements
 
 - A Mario Paint ROM. **Not included** — supply your own copy.
@@ -33,7 +58,7 @@ export MCPAINT_CORE="$HOME/Library/Application Support/RetroArch/cores/snes9x_li
 export MCPAINT_ROM="/path/to/Mario Paint (JU).smc"
 export MCPAINT_OUT="$HOME/mcpaint"   # optional, this is the default
 
-go build -o build/mcpaint ./cmd/mcpaint
+go build -o build/ ./cmd/...   # mcpaint, mcpaint-cli, mcpaint-midi, mcpaint-song
 ```
 
 Register it with an MCP client:
@@ -114,18 +139,18 @@ The limits are tight and shape everything:
 
 ```sh
 # Redraw an image and screenshot the result
-go run ./cmd/mcpaint-cli -image picture.png -out out/canvas.png
+build/mcpaint-cli -image picture.png -out out/canvas.png
 
 # Record it being drawn stroke by stroke, from boot, with music
-go run ./cmd/mcpaint-cli -image picture.png -strokes -title 3 \
+build/mcpaint-cli -image picture.png -strokes -title 3 \
     -video out/picture.mp4 -out out/picture.png -seconds 20
 
 # Flat artwork: no dithering, hue-first matching, brand colours pinned
-go run ./cmd/mcpaint-cli -image logo.png -fit contain -dither=false -vivid \
+build/mcpaint-cli -image logo.png -fit contain -dither=false -vivid \
     -map "#4285F4=blue,#F4B400=yellow" -out out/logo.png
 
 # Play a set of drawing operations
-go run ./cmd/mcpaint-cli -ops testdata/scene.json -video out/scene.mp4 -full
+build/mcpaint-cli -ops testdata/scene.json -video out/scene.mp4 -full
 ```
 
 `cmd/mcpaint-song` turns a chord chart into a composition and records it. A staff
@@ -135,14 +160,16 @@ the verse around it.
 
 `cmd/mcpaint-midi` plays a MIDI file. The staff holds 96 columns, so a longer piece
 is split across pages: each is loaded in turn, recorded, and the recordings are
-stitched back together with no gap at the seam.
+stitched back together. Every page is cut to its exact length -- when the first
+column sounds and how long a column lasts are measured from the game at the
+chosen tempo -- so a rest that falls across a page break survives the seam.
 
 ```sh
 # See how a piece fits before starting the emulator
-go run ./cmd/mcpaint-midi -midi song.mid -dry -auto-key
+build/mcpaint-midi -midi song.mid -dry -auto-key
 
 # Play it, however many staves it takes
-go run ./cmd/mcpaint-midi -midi song.mid -auto-key -tempo 24 \
+build/mcpaint-midi -midi song.mid -auto-key -tempo 24 \
     -instruments "0=star,1=gameboy,2=mario" -out out/song.mp4
 ```
 
@@ -163,10 +190,13 @@ spectral centroid of its attack taken, running from about 320 Hz to 2250 Hz.
 Three limits bite, and each has a different answer.
 
 **Range.** Thirteen diatonic positions, B3 to G5, is under two octaves, so a
-piece spanning more has to fold. Folding each note on its own lets a part land
-wherever the arithmetic reaches, so a rising line jumps down mid-phrase and a
-bass ends up above the melody. Each note is instead put in the octave nearest
-to where its own part already is, which keeps the shape of the line.
+piece spanning more has to fold. A note the staff can hold stays exactly where
+it was written. One that cannot goes to the octave nearest where its own part
+already is, rather than wherever the arithmetic lands, so a rising line does
+not jump down mid-phrase and a bass does not end up above the melody. Applying
+that nearness to every note is a trap: it folds any leap wider than half an
+octave back into a step, and on one march it moved 162 of 413 notes when only
+3 were out of range.
 
 **Three voices per column.** Most of what looks like a shortage is not one:
 arrangements double notes at the octave, and once the staff has folded them
