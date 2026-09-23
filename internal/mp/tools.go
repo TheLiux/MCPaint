@@ -1,6 +1,10 @@
 package mp
 
-import "math"
+import (
+	"encoding/json"
+	"fmt"
+	"math"
+)
 
 type Point struct {
 	X int `json:"x"`
@@ -305,4 +309,40 @@ func CanvasToOps(c *Canvas) []Op {
 		}
 	}
 	return ops
+}
+
+// UnmarshalJSON accepts a colour written either as a palette index or by
+// name, so a hand-written operations file can say "red" rather than 1.
+func (o *Op) UnmarshalJSON(data []byte) error {
+	type plain Op
+	var raw struct {
+		plain
+		Color json.RawMessage `json:"color"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*o = Op(raw.plain)
+
+	if len(raw.Color) == 0 || string(raw.Color) == "null" {
+		return nil
+	}
+	var name string
+	if err := json.Unmarshal(raw.Color, &name); err == nil {
+		idx, err := ParseColor(name)
+		if err != nil {
+			return err
+		}
+		o.Color = idx
+		return nil
+	}
+	var idx byte
+	if err := json.Unmarshal(raw.Color, &idx); err != nil {
+		return fmt.Errorf("operation colour: want a palette name or an index 0..15")
+	}
+	if idx > 15 {
+		return fmt.Errorf("palette index %d is out of range (0..15)", idx)
+	}
+	o.Color = idx
+	return nil
 }
