@@ -148,6 +148,12 @@ func fitPitchNear(note int, near byte) (pitch byte, transposed, snapped bool) {
 				d = -d
 			}
 			score = d*2 + dist
+			// Following the line is for notes that have to move anyway. One
+			// that fits where it was written stays there, or every leap wider
+			// than half an octave gets folded back into a step.
+			if shift != 0 {
+				score += 1000
+			}
 		}
 		if best == 0 || score < bestScore {
 			best, bestScore, bestSnap, bestShift = p, score, dist != 0, shift
