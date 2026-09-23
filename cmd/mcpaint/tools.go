@@ -10,10 +10,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/TheLiux/MCPaint/internal/capture"
 	"github.com/TheLiux/MCPaint/internal/mp"
 	"github.com/TheLiux/MCPaint/internal/session"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // ---- shared wire types ----

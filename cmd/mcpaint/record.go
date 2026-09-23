@@ -6,9 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/TheLiux/MCPaint/internal/capture"
 	"github.com/TheLiux/MCPaint/internal/session"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 type recordSessionInput struct {

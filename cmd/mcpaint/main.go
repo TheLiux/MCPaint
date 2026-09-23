@@ -12,8 +12,8 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/TheLiux/MCPaint/internal/session"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const version = "0.1.0"
